@@ -3,10 +3,10 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/docker/docker/engine"
 	"github.com/docker/docker/runconfig"
+	"github.com/docker/libcontainer/label"
 )
 
 func (daemon *Daemon) ContainerStart(job *engine.Job) engine.Status {
@@ -58,15 +58,24 @@ func (daemon *Daemon) setHostConfig(container *Container, hostConfig *runconfig.
 	// Validate the HostConfig binds. Make sure that:
 	// the source exists
 	for _, bind := range hostConfig.Binds {
-		splitBind := strings.Split(bind, ":")
-		source := splitBind[0]
+		source, _, _, labelMode, err := parseBindMountSpec(bind)
+		if err != nil {
+			return err
+		}
 
 		// ensure the source exists on the host
-		_, err := os.Stat(source)
+		_, err = os.Stat(source)
 		if err != nil && os.IsNotExist(err) {
 			err = os.MkdirAll(source, 0755)
 			if err != nil {
 				return fmt.Errorf("Could not create local directory '%s' for bind mount: %v!", source, err)
+			}
+
+		}
+
+		if hostPath := container.Volumes[containerPath]; hostPath != source {
+			if err := label.Relabel(source, container.MountLabel, labelMode); err != nil {
+				return err
 			}
 		}
 	}
