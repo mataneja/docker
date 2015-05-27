@@ -1221,13 +1221,13 @@ func (daemon *Daemon) verifyHostConfig(hostConfig *runconfig.HostConfig) ([]stri
 }
 
 func (daemon *Daemon) setHostConfig(container *Container, hostConfig *runconfig.HostConfig) error {
-	if err := daemon.registerMountPoints(container, hostConfig); err != nil {
-		return err
-	}
-
 	container.Lock()
 	defer container.Unlock()
 	if err := parseSecurityOpt(container, hostConfig); err != nil {
+		return err
+	}
+
+	if err := daemon.registerMountPoints(container, hostConfig); err != nil {
 		return err
 	}
 

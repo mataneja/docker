@@ -6,10 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/pkg/chrootarchive"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/volume"
@@ -23,6 +21,7 @@ type mountPoint struct {
 	RW          bool
 	Volume      volume.Volume `json:"-"`
 	Source      string
+	Relabel     string
 }
 
 func (m *mountPoint) Setup() (string, error) {
@@ -70,10 +69,11 @@ func parseBindMount(spec string, mountLabel string, config *runconfig.Config) (*
 		}
 		bind.RW = rwModes[mode]
 		// check if we need to apply a SELinux label
-		if strings.ContainsAny(mode, "zZ") {
-			if err := label.Relabel(bind.Source, mountLabel, mode); err != nil {
-				return nil, err
-			}
+		switch {
+		case strings.Contains(mode, "z"):
+			bind.Relabel = "z"
+		case strings.Contains(mode, "Z"):
+			bind.Relabel = "Z"
 		}
 	default:
 		return nil, fmt.Errorf("Invalid volume specification: %s", spec)
@@ -203,9 +203,6 @@ func (daemon *Daemon) registerMountPoints(container *Container, hostConfig *runc
 		}
 	}
 
-	// lock for labels
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	// 3. Read bind mounts
 	for _, b := range hostConfig.Binds {
 		// #10618
@@ -219,28 +216,22 @@ func (daemon *Daemon) registerMountPoints(container *Container, hostConfig *runc
 		}
 
 		if len(bind.Name) > 0 && len(bind.Driver) > 0 {
-			// set the label
-			if err := label.SetFileCreateLabel(container.MountLabel); err != nil {
-				return fmt.Errorf("Unable to setup default labeling for volume creation %s: %v", bind.Source, err)
-			}
-
 			// create the volume
 			v, err := createVolume(bind.Name, bind.Driver)
 			if err != nil {
-				// reset the label
-				if e := label.SetFileCreateLabel(""); e != nil {
-					logrus.Errorf("Unable to reset labeling for volume creation %s: %v", bind.Source, e)
-				}
 				return err
 			}
 			bind.Volume = v
-
-			// reset the label
-			if err := label.SetFileCreateLabel(""); err != nil {
-				return fmt.Errorf("Unable to reset labeling for volume creation %s: %v", bind.Source, err)
+			bind.Source = v.Path()
+			// Since this is just a named volume and not a typical bind, set to shared mode `z`
+			if bind.Relabel == "" {
+				bind.Relabel = "z"
 			}
 		}
 
+		if err := label.Relabel(bind.Source, container.MountLabel, bind.Relabel); err != nil {
+			return err
+		}
 		binds[bind.Destination] = true
 		mountPoints[bind.Destination] = bind
 	}
