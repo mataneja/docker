@@ -236,7 +236,9 @@ func (daemon *Daemon) registerMountPoints(container *Container, hostConfig *runc
 		mountPoints[bind.Destination] = bind
 	}
 
+	container.Lock()
 	container.MountPoints = mountPoints
+	container.Unlock()
 
 	return nil
 }
