@@ -253,3 +253,20 @@ type ContainerConfig struct {
 	CpuShares  int64
 	Cpuset     string
 }
+
+type VolumesListConfig struct {
+	Filters string
+	Quiet   bool
+	Size    bool
+}
+
+type Volume struct {
+	Name   string
+	Driver string
+	Size   int64 `json:",omitempty"`
+}
+
+type VolumesListResponse struct {
+	Volumes  []*Volume
+	Warnings []string `json:",omitempty"`
+}

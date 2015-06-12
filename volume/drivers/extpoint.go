@@ -59,3 +59,13 @@ func Lookup(name string) (volume.Driver, error) {
 	drivers.extensions[name] = d
 	return d, nil
 }
+
+func List() map[string]volume.Driver {
+	drivers.Lock()
+	defer drivers.Unlock()
+	ls := make(map[string]volume.Driver)
+	for name, d := range drivers.extensions {
+		ls[name] = d
+	}
+	return ls
+}

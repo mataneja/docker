@@ -9,6 +9,8 @@ type Driver interface {
 	Create(string) (Volume, error)
 	// Remove deletes the volume.
 	Remove(Volume) error
+	// List all volumes of the driver.
+	List() ([]Volume, error)
 }
 
 type Volume interface {

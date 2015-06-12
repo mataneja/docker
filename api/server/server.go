@@ -1449,6 +1449,22 @@ func (s *Server) postContainerExecResize(version version.Version, w http.Respons
 	return s.daemon.ContainerExecResize(vars["name"], height, width)
 }
 
+func (s *Server) getVolumesList(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+
+	volumes, warnings, err := s.daemon.Volumes(r.Form.Get("filters"), boolValue(r, "quiet"), boolValue(r, "size"))
+	if err != nil {
+		return err
+	}
+	resp := &types.VolumesListResponse{
+		Volumes:  volumes,
+		Warnings: warnings,
+	}
+	return writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) optionsHandler(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	w.WriteHeader(http.StatusOK)
 	return nil
@@ -1554,6 +1570,8 @@ func createRouter(s *Server) *mux.Router {
 			"/containers/{name:.*}/stats":     s.getContainersStats,
 			"/containers/{name:.*}/attach/ws": s.wsContainersAttach,
 			"/exec/{id:.*}/json":              s.getExecByID,
+			"/volumes":                        s.getVolumesList,
+			//"/volumes/{name:.*}":              s.getVolumeByName,
 		},
 		"POST": {
 			"/auth":                         s.postAuth,
@@ -1578,10 +1596,12 @@ func createRouter(s *Server) *mux.Router {
 			"/exec/{name:.*}/start":         s.postContainerExecStart,
 			"/exec/{name:.*}/resize":        s.postContainerExecResize,
 			"/containers/{name:.*}/rename":  s.postContainerRename,
+			//"/volumes":                      s.postVolumesCreate,
 		},
 		"DELETE": {
 			"/containers/{name:.*}": s.deleteContainers,
 			"/images/{name:.*}":     s.deleteImages,
+			//"/volumes/{name:.*}":    s.deleteVolumes,
 		},
 		"OPTIONS": {
 			"": s.optionsHandler,

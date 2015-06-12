@@ -7,9 +7,11 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/pkg/directory"
 	"github.com/docker/docker/pkg/graphdb"
 	"github.com/docker/docker/pkg/nat"
 	"github.com/docker/docker/pkg/parsers/filters"
+	volumedrivers "github.com/docker/docker/volume/drivers"
 )
 
 // List returns an array of all containers registered in the daemon.
@@ -193,4 +195,62 @@ func (daemon *Daemon) Containers(config *ContainersConfig) ([]*types.Container, 
 		}
 	}
 	return containers, nil
+}
+
+func (daemon *Daemon) Volumes(filter string, quiet, size bool) (volumesOut []*types.Volume, warnings []string, err error) {
+	volFilters, err := filters.FromParam(filter)
+	if err != nil {
+		return nil, nil, err
+	}
+	filterUsed := false
+	usedVolumes := make(map[string]struct{})
+	if i, ok := volFilters["dangling"]; ok {
+		if len(i) > 1 {
+			return nil, nil, fmt.Errorf("Conflict: cannot use more than 1 value for `dangling` filter")
+		}
+
+		filterValue := i[0]
+
+		if strings.ToLower(filterValue) == "true" || filterValue == "1" {
+			filterUsed = true
+			containers := daemon.containers.List()
+			for _, c := range containers {
+				for _, mnt := range c.MountPoints {
+					usedVolumes[mnt.Volume.Path()] = struct{}{}
+				}
+			}
+		}
+	}
+
+	drivers := volumedrivers.List()
+	for driverName, d := range drivers {
+		volumes, err := d.List()
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("error getting volumes from driver %s: %v", driverName, err))
+			continue
+		}
+
+		for _, vol := range volumes {
+			if filterUsed {
+				if _, exists := usedVolumes[vol.Path()]; exists {
+					continue
+				}
+			}
+			v := &types.Volume{
+				Name:   vol.Name(),
+				Driver: driverName,
+			}
+
+			if size {
+				v.Size, err = directory.Size(vol.Path())
+				if err != nil {
+					v.Size = -1
+					warnings = append(warnings, fmt.Sprintf("error getting size for volume %s/%s: %v", v.Driver, v.Name, err))
+				}
+			}
+			volumesOut = append(volumesOut, v)
+		}
+	}
+
+	return volumesOut, warnings, nil
 }

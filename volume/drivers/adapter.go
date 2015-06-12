@@ -26,11 +26,33 @@ func (a *volumeDriverAdapter) Remove(v volume.Volume) error {
 	return a.proxy.Remove(v.Name())
 }
 
+func (a *volumeDriverAdapter) List() ([]volume.Volume, error) {
+	vols, err := a.proxy.List()
+	if err != nil {
+		return nil, err
+	}
+	var volumes []volume.Volume
+	for _, v := range vols {
+		volumes = append(volumes, &volumeAdapter{
+			eMount:     v.Mountpoint,
+			proxy:      a.proxy,
+			name:       v.Name,
+			driverName: a.name,
+		})
+	}
+	return volumes, nil
+}
+
 type volumeAdapter struct {
 	proxy      *volumeDriverProxy
 	name       string
 	driverName string
 	eMount     string // ephemeral host volume path
+}
+
+type proxyVolume struct {
+	Name       string
+	Mountpoint string
 }
 
 func (a *volumeAdapter) Name() string {

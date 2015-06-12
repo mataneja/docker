@@ -20,7 +20,10 @@ const (
 	volumesPathName    = "volumes"
 )
 
-var oldVfsDir = filepath.Join("vfs", "dir")
+var (
+	ErrVolumeInUse = errors.New("volume is in use")
+	oldVfsDir      = filepath.Join("vfs", "dir")
+)
 
 func New(scope string) (*Root, error) {
 	rootDirectory := filepath.Join(scope, volumesPathName)
@@ -48,6 +51,7 @@ func New(scope string) (*Root, error) {
 			path:       r.DataPath(name),
 		}
 	}
+
 	return r, nil
 }
 
@@ -64,6 +68,14 @@ func (r *Root) DataPath(volumeName string) string {
 
 func (r *Root) Name() string {
 	return "local"
+}
+
+func (r *Root) List() ([]volume.Volume, error) {
+	var vols []volume.Volume
+	for _, v := range r.volumes {
+		vols = append(vols, v)
+	}
+	return vols, nil
 }
 
 func (r *Root) Create(name string) (volume.Volume, error) {
@@ -98,22 +110,24 @@ func (r *Root) Remove(v volume.Volume) error {
 		return errors.New("unknown volume type")
 	}
 	lv.release()
-	if lv.usedCount == 0 {
-		realPath, err := filepath.EvalSymlinks(lv.path)
-		if err != nil {
-			return err
-		}
-		if !r.scopedPath(realPath) {
-			return fmt.Errorf("Unable to remove a directory of out the Docker root: %s", realPath)
-		}
-
-		if err := os.RemoveAll(realPath); err != nil {
-			return err
-		}
-
-		delete(r.volumes, lv.name)
-		return os.RemoveAll(filepath.Dir(lv.path))
+	if lv.usedCount > 0 {
+		return ErrVolumeInUse
 	}
+
+	realPath, err := filepath.EvalSymlinks(lv.path)
+	if err != nil {
+		return err
+	}
+	if !r.scopedPath(realPath) {
+		return fmt.Errorf("Unable to remove a directory of out the Docker root: %s", realPath)
+	}
+
+	if err := os.RemoveAll(realPath); err != nil {
+		return err
+	}
+
+	delete(r.volumes, lv.name)
+	return os.RemoveAll(filepath.Dir(lv.path))
 	return nil
 }
 

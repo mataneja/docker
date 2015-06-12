@@ -31,6 +31,7 @@ import (
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/volume"
+	"github.com/docker/docker/volume/local"
 )
 
 var (
@@ -1137,7 +1138,7 @@ func (container *Container) prepareMountPoints() error {
 func (container *Container) removeMountPoints() error {
 	for _, m := range container.MountPoints {
 		if m.Volume != nil {
-			if err := removeVolume(m.Volume); err != nil {
+			if err := removeVolume(m.Volume); err != nil && err != local.ErrVolumeInUse {
 				return err
 			}
 		}

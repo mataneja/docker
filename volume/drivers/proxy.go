@@ -10,8 +10,9 @@ type volumeDriverRequest struct {
 }
 
 type volumeDriverResponse struct {
-	Mountpoint string `json:",omitempty"`
-	Err        string `json:",omitempty"`
+	Mountpoint string         `json:",omitempty"`
+	Err        string         `json:",omitempty"`
+	Volumes    []*proxyVolume `json:",omitempty"`
 }
 
 type volumeDriverProxy struct {
@@ -64,6 +65,14 @@ func (pp *volumeDriverProxy) Unmount(name string) error {
 		return pp.fmtError(name, err.Error())
 	}
 	return pp.fmtError(name, ret.Err)
+}
+
+func (pp *volumeDriverProxy) List() ([]*proxyVolume, error) {
+	var ret volumeDriverResponse
+	if err := pp.c.Call("VolumeDriver.List", nil, &ret); err != nil {
+		return nil, err
+	}
+	return ret.Volumes, nil
 }
 
 func (pp *volumeDriverProxy) fmtError(name string, err string) error {
