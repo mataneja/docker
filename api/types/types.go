@@ -261,9 +261,10 @@ type VolumesListConfig struct {
 }
 
 type Volume struct {
-	Name   string
-	Driver string
-	Size   int64 `json:",omitempty"`
+	Name       string
+	Driver     string
+	Size       int64  `json:",omitempty"`
+	Mountpoint string `json:",omitempty"`
 }
 
 type VolumesListResponse struct {

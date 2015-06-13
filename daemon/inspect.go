@@ -1,9 +1,14 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/pkg/directory"
+	"github.com/docker/docker/pkg/parsers/filters"
+	"github.com/docker/docker/volume"
+	"github.com/docker/docker/volume/drivers"
 )
 
 func (daemon *Daemon) ContainerInspect(name string) (*types.ContainerJSON, error) {
@@ -126,4 +131,61 @@ func (daemon *Daemon) ContainerExecInspect(id string) (*execConfig, error) {
 	}
 
 	return eConfig, nil
+}
+
+func (daemon *Daemon) VolumeInspect(name, filter string, size bool) (*types.Volume, error) {
+	inspectFilters, err := filters.FromParam(filter)
+	if err != nil {
+		return nil, err
+	}
+
+	filterDriverNames := make(map[string]struct{})
+	if i, ok := inspectFilters["driver"]; ok {
+		for _, value := range i {
+			filterDriverNames[value] = struct{}{}
+		}
+	}
+	filterByDriver := len(filterDriverNames) > 0
+
+	if !filterByDriver {
+		// try getting from the local driver first
+		localDrv, err := volumedrivers.Lookup("local")
+		if err != nil {
+			return nil, err
+		}
+		v, err := localDrv.Get(name)
+		if err == nil {
+			return volumeToAPIType(v, size), nil
+		}
+	}
+
+	drivers := volumedrivers.List()
+	for drvName, d := range drivers {
+		_, ok := filterDriverNames[drvName]
+		if !filterByDriver || (filterByDriver && ok) {
+			v, err := d.Get(name)
+			if err == nil {
+				return volumeToAPIType(v, size), nil
+			}
+		}
+	}
+
+	return nil, errors.New("No such volume with name: " + name)
+}
+
+func volumeToAPIType(v volume.Volume, size bool) *types.Volume {
+	vv := &types.Volume{
+		Name:       v.Name(),
+		Driver:     v.DriverName(),
+		Mountpoint: v.Path(),
+	}
+	var err error
+	if size {
+		vv.Size, err = directory.Size(vv.Mountpoint)
+		if err != nil {
+			vv.Size = -1
+		}
+	}
+
+	return vv
 }

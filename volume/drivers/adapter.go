@@ -43,6 +43,19 @@ func (a *volumeDriverAdapter) List() ([]volume.Volume, error) {
 	return volumes, nil
 }
 
+func (a *volumeDriverAdapter) Get(name string) (volume.Volume, error) {
+	v, err := a.proxy.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return &volumeAdapter{
+		eMount:     v.Mountpoint,
+		proxy:      a.proxy,
+		name:       v.Name,
+		driverName: a.name,
+	}, nil
+}
+
 type volumeAdapter struct {
 	proxy      *volumeDriverProxy
 	name       string

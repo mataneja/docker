@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/pkg/directory"
 	"github.com/docker/docker/pkg/graphdb"
 	"github.com/docker/docker/pkg/nat"
 	"github.com/docker/docker/pkg/parsers/filters"
@@ -236,17 +235,10 @@ func (daemon *Daemon) Volumes(filter string, quiet, size bool) (volumesOut []*ty
 					continue
 				}
 			}
-			v := &types.Volume{
-				Name:   vol.Name(),
-				Driver: driverName,
-			}
 
-			if size {
-				v.Size, err = directory.Size(vol.Path())
-				if err != nil {
-					v.Size = -1
-					warnings = append(warnings, fmt.Sprintf("error getting size for volume %s/%s: %v", v.Driver, v.Name, err))
-				}
+			v := volumeToAPIType(vol, size)
+			if size && v.Size == -1 {
+				warnings = append(warnings, fmt.Sprintf("error getting size for volume %s/%s: %v", v.Driver, v.Name, err))
 			}
 			volumesOut = append(volumesOut, v)
 		}

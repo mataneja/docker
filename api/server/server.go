@@ -1465,6 +1465,19 @@ func (s *Server) getVolumesList(version version.Version, w http.ResponseWriter, 
 	return writeJSON(w, http.StatusOK, resp)
 }
 
+func (s *Server) getVolumeByName(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+
+	volume, err := s.daemon.VolumeInspect(vars["name"], r.Form.Get("filters"), boolValue(r, "size"))
+	if err != nil {
+		return err
+	}
+
+	return writeJSON(w, http.StatusOK, volume)
+}
+
 func (s *Server) optionsHandler(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	w.WriteHeader(http.StatusOK)
 	return nil
@@ -1571,7 +1584,7 @@ func createRouter(s *Server) *mux.Router {
 			"/containers/{name:.*}/attach/ws": s.wsContainersAttach,
 			"/exec/{id:.*}/json":              s.getExecByID,
 			"/volumes":                        s.getVolumesList,
-			//"/volumes/{name:.*}":              s.getVolumeByName,
+			"/volumes/{name:.*}":              s.getVolumeByName,
 		},
 		"POST": {
 			"/auth":                         s.postAuth,

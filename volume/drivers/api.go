@@ -17,5 +17,6 @@ type VolumeDriver interface {
 	Path(name string) (mountpoint string, err error)
 	Mount(name string) (mountpoint string, err error)
 	Unmount(name string) (err error)
+	Get(name string) (volume *proxyVolume, err error)
 	List() (volumes []*proxyVolume, err error)
 }

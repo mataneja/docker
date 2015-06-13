@@ -22,6 +22,7 @@ const (
 
 var (
 	ErrVolumeInUse = errors.New("volume is in use")
+	ErrNotFound    = errors.New("volume not found")
 	oldVfsDir      = filepath.Join("vfs", "dir")
 )
 
@@ -72,9 +73,11 @@ func (r *Root) Name() string {
 
 func (r *Root) List() ([]volume.Volume, error) {
 	var vols []volume.Volume
+	r.m.Lock()
 	for _, v := range r.volumes {
 		vols = append(vols, v)
 	}
+	r.m.Unlock()
 	return vols, nil
 }
 
@@ -129,6 +132,16 @@ func (r *Root) Remove(v volume.Volume) error {
 	delete(r.volumes, lv.name)
 	return os.RemoveAll(filepath.Dir(lv.path))
 	return nil
+}
+
+func (r *Root) Get(name string) (volume.Volume, error) {
+	r.m.Lock()
+	v, exists := r.volumes[name]
+	r.m.Unlock()
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return v, nil
 }
 
 // scopedPath verifies that the path where the volume is located
