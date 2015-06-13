@@ -1470,7 +1470,7 @@ func (s *Server) getVolumeByName(version version.Version, w http.ResponseWriter,
 		return err
 	}
 
-	volume, err := s.daemon.VolumeInspect(vars["name"], r.Form.Get("filters"), boolValue(r, "size"))
+	volume, err := s.daemon.VolumeInspect(vars["driver"], vars["name"], boolValue(r, "size"))
 	if err != nil {
 		return err
 	}
@@ -1497,6 +1497,13 @@ func (s *Server) postVolumesCreate(version version.Version, w http.ResponseWrite
 		return err
 	}
 	return writeJSON(w, http.StatusOK, volume)
+}
+
+func (s *Server) deleteVolumes(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+	return s.daemon.VolumeRm(vars["driver"], vars["name"])
 }
 
 func (s *Server) optionsHandler(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
@@ -1605,7 +1612,7 @@ func createRouter(s *Server) *mux.Router {
 			"/containers/{name:.*}/attach/ws": s.wsContainersAttach,
 			"/exec/{id:.*}/json":              s.getExecByID,
 			"/volumes":                        s.getVolumesList,
-			"/volumes/{name:.*}":              s.getVolumeByName,
+			"/volumes/{driver}/{name:.*}":     s.getVolumeByName,
 		},
 		"POST": {
 			"/auth":                         s.postAuth,
@@ -1633,9 +1640,9 @@ func createRouter(s *Server) *mux.Router {
 			"/volumes":                      s.postVolumesCreate,
 		},
 		"DELETE": {
-			"/containers/{name:.*}": s.deleteContainers,
-			"/images/{name:.*}":     s.deleteImages,
-			//"/volumes/{name:.*}":    s.deleteVolumes,
+			"/containers/{name:.*}":       s.deleteContainers,
+			"/images/{name:.*}":           s.deleteImages,
+			"/volumes/{driver}/{name:.*}": s.deleteVolumes,
 		},
 		"OPTIONS": {
 			"": s.optionsHandler,

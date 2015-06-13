@@ -21,9 +21,8 @@ const (
 )
 
 var (
-	ErrVolumeInUse = errors.New("volume is in use")
-	ErrNotFound    = errors.New("volume not found")
-	oldVfsDir      = filepath.Join("vfs", "dir")
+	ErrNotFound = errors.New("volume not found")
+	oldVfsDir   = filepath.Join("vfs", "dir")
 )
 
 func New(scope string) (*Root, error) {
@@ -86,18 +85,14 @@ func (r *Root) Create(name string, _ map[string]string) (volume.Volume, error) {
 	defer r.m.Unlock()
 
 	v, exists := r.volumes[name]
-	if !exists {
-		path := r.DataPath(name)
-		if err := os.MkdirAll(path, 0755); err != nil {
-			if os.IsExist(err) {
-				return nil, fmt.Errorf("volume already exists under %s", filepath.Dir(path))
-			}
-			return nil, err
-		}
-		v = &Volume{
-			driverName: r.Name(),
-			name:       name,
-			path:       path,
+	if exists {
+		return v, nil
+	}
+
+	path := r.DataPath(name)
+	if err := os.MkdirAll(path, 0755); err != nil {
+		if os.IsExist(err) {
+			return nil, fmt.Errorf("volume already exists under %s", filepath.Dir(path))
 		}
 		r.volumes[name] = v
 	}
@@ -111,10 +106,6 @@ func (r *Root) Remove(v volume.Volume) error {
 	lv, ok := v.(*Volume)
 	if !ok {
 		return errors.New("unknown volume type")
-	}
-	lv.release()
-	if lv.usedCount > 0 {
-		return ErrVolumeInUse
 	}
 
 	realPath, err := filepath.EvalSymlinks(lv.path)
@@ -161,8 +152,6 @@ func (r *Root) scopedPath(realPath string) bool {
 }
 
 type Volume struct {
-	m         sync.Mutex
-	usedCount int
 	// unique name of the volume
 	name string
 	// path is the path on the host where the data lives
@@ -189,16 +178,4 @@ func (v *Volume) Mount() (string, error) {
 
 func (v *Volume) Unmount() error {
 	return nil
-}
-
-func (v *Volume) use() {
-	v.m.Lock()
-	v.usedCount++
-	v.m.Unlock()
-}
-
-func (v *Volume) release() {
-	v.m.Lock()
-	v.usedCount--
-	v.m.Unlock()
 }

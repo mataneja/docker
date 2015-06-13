@@ -340,6 +340,7 @@ func createVolume(name, driverName string, opts map[string]string) (volume.Volum
 	if err != nil {
 		return nil, err
 	}
+	volume.Counter.Increment(driverName, name)
 	return vd.Create(name, opts)
 }
 
@@ -348,5 +349,12 @@ func removeVolume(v volume.Volume) error {
 	if err != nil {
 		return nil
 	}
+	if !canRemoveVolume(v.DriverName(), v.Name()) {
+		return fmt.Errorf("cannot remove volume: %s, volume is in use")
+	}
 	return vd.Remove(v)
+}
+
+func canRemoveVolume(driver, name string) bool {
+	return volume.Counter.Count(driver, name) <= 0
 }

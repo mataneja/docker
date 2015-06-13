@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/opts"
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/stringutils"
@@ -409,6 +410,24 @@ func deleteAllContainers() error {
 
 	if err = deleteContainer(containers); err != nil {
 		return err
+	}
+	return nil
+}
+
+func deleteAllVolumes() error {
+	var volumes types.VolumesListResponse
+	_, b, err := sockRequest("GET", "/volumes", nil)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(b, &volumes); err != nil {
+		return err
+	}
+
+	for _, v := range volumes.Volumes {
+		if _, _, err := sockRequest("DELETE", "/volumes/"+v.Driver+"/"+v.Name, nil); err != nil {
+			fmt.Println(err)
+		}
 	}
 	return nil
 }

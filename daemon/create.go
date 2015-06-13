@@ -127,6 +127,7 @@ func (daemon *Daemon) Create(config *runconfig.Config, hostConfig *runconfig.Hos
 		if err != nil {
 			return nil, nil, err
 		}
+
 		if err := label.Relabel(v.Path(), container.MountLabel, "z"); err != nil {
 			return nil, nil, err
 		}

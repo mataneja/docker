@@ -254,17 +254,11 @@ type ContainerConfig struct {
 	Cpuset     string
 }
 
-type VolumesListConfig struct {
-	Filters string
-	Quiet   bool
-	Size    bool
-}
-
 type Volume struct {
 	Name       string
 	Driver     string
-	Size       int64  `json:",omitempty"`
-	Mountpoint string `json:",omitempty"`
+	Mountpoint string
+	Size       int64 `json:",omitempty"`
 }
 
 type VolumesListResponse struct {

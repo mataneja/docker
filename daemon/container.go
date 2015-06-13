@@ -31,7 +31,6 @@ import (
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/runconfig"
 	"github.com/docker/docker/volume"
-	"github.com/docker/docker/volume/local"
 )
 
 var (
@@ -1135,10 +1134,14 @@ func (container *Container) prepareMountPoints() error {
 	return nil
 }
 
-func (container *Container) removeMountPoints() error {
+func (container *Container) removeMountPoints(rm bool) error {
 	for _, m := range container.MountPoints {
-		if m.Volume != nil {
-			if err := removeVolume(m.Volume); err != nil && err != local.ErrVolumeInUse {
+		if m.Volume == nil {
+			continue
+		}
+		volume.Counter.Decrement(m.Volume.DriverName(), m.Volume.Name())
+		if rm {
+			if err := removeVolume(m.Volume); err != nil {
 				return err
 			}
 		}

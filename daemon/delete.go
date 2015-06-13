@@ -49,9 +49,7 @@ func (daemon *Daemon) ContainerRm(name string, config *ContainerRmConfig) error 
 		return fmt.Errorf("Cannot destroy container %s: %v", name, err)
 	}
 
-	if config.RemoveVolume {
-		container.removeMountPoints()
-	}
+	container.removeMountPoints(config.RemoveVolume)
 	return nil
 }
 
@@ -139,6 +137,14 @@ func (daemon *Daemon) rm(container *Container, forceRemove bool) (err error) {
 	return nil
 }
 
-func (daemon *Daemon) DeleteVolumes(c *Container) error {
-	return c.removeMountPoints()
+func (daemon *Daemon) VolumeRm(driverName, name string) error {
+	d, err := getVolumeDriver(driverName)
+	if err != nil {
+		return err
+	}
+	v, err := d.Get(name)
+	if err != nil {
+		return fmt.Errorf("volume not found: %s", name)
+	}
+	return d.Remove(v)
 }
