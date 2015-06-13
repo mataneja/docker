@@ -195,7 +195,7 @@ func (daemon *Daemon) registerMountPoints(container *Container, hostConfig *runc
 			cp.RW = m.RW && mode != "ro"
 
 			if len(m.Source) == 0 {
-				v, err := createVolume(m.Name, m.Driver)
+				v, err := createVolume(m.Name, m.Driver, nil)
 				if err != nil {
 					return err
 				}
@@ -220,7 +220,7 @@ func (daemon *Daemon) registerMountPoints(container *Container, hostConfig *runc
 
 		if len(bind.Name) > 0 && len(bind.Driver) > 0 {
 			// create the volume
-			v, err := createVolume(bind.Name, bind.Driver)
+			v, err := createVolume(bind.Name, bind.Driver, nil)
 			if err != nil {
 				return err
 			}
@@ -335,12 +335,12 @@ func (daemon *Daemon) verifyVolumesInfo(container *Container) error {
 	return nil
 }
 
-func createVolume(name, driverName string) (volume.Volume, error) {
+func createVolume(name, driverName string, opts map[string]string) (volume.Volume, error) {
 	vd, err := getVolumeDriver(driverName)
 	if err != nil {
 		return nil, err
 	}
-	return vd.Create(name)
+	return vd.Create(name, opts)
 }
 
 func removeVolume(v volume.Volume) error {

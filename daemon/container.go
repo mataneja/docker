@@ -1125,7 +1125,7 @@ func (container *Container) isDestinationMounted(destination string) bool {
 func (container *Container) prepareMountPoints() error {
 	for _, config := range container.MountPoints {
 		if len(config.Driver) > 0 {
-			v, err := createVolume(config.Name, config.Driver)
+			v, err := createVolume(config.Name, config.Driver, nil)
 			if err != nil {
 				return err
 			}

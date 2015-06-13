@@ -1478,6 +1478,27 @@ func (s *Server) getVolumeByName(version version.Version, w http.ResponseWriter,
 	return writeJSON(w, http.StatusOK, volume)
 }
 
+func (s *Server) postVolumesCreate(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	if err := parseForm(r); err != nil {
+		return err
+	}
+
+	if err := checkForJson(r); err != nil {
+		return err
+	}
+
+	var req types.VolumeCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return err
+	}
+
+	volume, err := s.daemon.VolumeCreate(req.Name, req.Driver, req.DriverOpts)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, volume)
+}
+
 func (s *Server) optionsHandler(version version.Version, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	w.WriteHeader(http.StatusOK)
 	return nil
@@ -1609,7 +1630,7 @@ func createRouter(s *Server) *mux.Router {
 			"/exec/{name:.*}/start":         s.postContainerExecStart,
 			"/exec/{name:.*}/resize":        s.postContainerExecResize,
 			"/containers/{name:.*}/rename":  s.postContainerRename,
-			//"/volumes":                      s.postVolumesCreate,
+			"/volumes":                      s.postVolumesCreate,
 		},
 		"DELETE": {
 			"/containers/{name:.*}": s.deleteContainers,

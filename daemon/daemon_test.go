@@ -485,7 +485,7 @@ func TestRemoveLocalVolumesFollowingSymlinks(t *testing.T) {
 	}
 
 	m := c.MountPoints["/vol1"]
-	v, err := createVolume(m.Name, m.Driver)
+	v, err := createVolume(m.Name, m.Driver, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

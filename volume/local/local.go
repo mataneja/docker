@@ -81,7 +81,7 @@ func (r *Root) List() ([]volume.Volume, error) {
 	return vols, nil
 }
 
-func (r *Root) Create(name string) (volume.Volume, error) {
+func (r *Root) Create(name string, _ map[string]string) (volume.Volume, error) {
 	r.m.Lock()
 	defer r.m.Unlock()
 

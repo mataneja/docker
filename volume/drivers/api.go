@@ -12,7 +12,7 @@ func NewVolumeDriver(name string, c client) volume.Driver {
 }
 
 type VolumeDriver interface {
-	Create(name string) (err error)
+	Create(name string, opts map[string]string) (err error)
 	Remove(name string) (err error)
 	Path(name string) (mountpoint string, err error)
 	Mount(name string) (mountpoint string, err error)

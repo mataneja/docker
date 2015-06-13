@@ -149,7 +149,7 @@ func (daemon *Daemon) VolumeInspect(name, filter string, size bool) (*types.Volu
 
 	if !filterByDriver {
 		// try getting from the local driver first
-		localDrv, err := volumedrivers.Lookup("local")
+		localDrv, err := volumedrivers.Lookup(volume.DefaultDriverName)
 		if err != nil {
 			return nil, err
 		}

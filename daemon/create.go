@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/graph"
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/pkg/parsers"
@@ -122,7 +123,7 @@ func (daemon *Daemon) Create(config *runconfig.Config, hostConfig *runconfig.Hos
 			return nil, nil, fmt.Errorf("cannot mount volume over existing file, file exists %s", path)
 		}
 
-		v, err := createVolume(name, config.VolumeDriver)
+		v, err := createVolume(name, config.VolumeDriver, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -157,4 +158,17 @@ func (daemon *Daemon) GenerateSecurityOpt(ipcMode runconfig.IpcMode, pidMode run
 		return label.DupSecOpt(c.ProcessLabel), nil
 	}
 	return nil, nil
+}
+
+func (daemon *Daemon) VolumeCreate(name, driverName string, opts map[string]string) (*types.Volume, error) {
+	if name == "" {
+		name = stringid.GenerateRandomID()
+	}
+
+	v, err := createVolume(name, driverName, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return volumeToAPIType(v, false), nil
 }

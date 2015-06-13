@@ -271,3 +271,9 @@ type VolumesListResponse struct {
 	Volumes  []*Volume
 	Warnings []string `json:",omitempty"`
 }
+
+type VolumeCreateRequest struct {
+	Name       string
+	Driver     string
+	DriverOpts map[string]string
+}

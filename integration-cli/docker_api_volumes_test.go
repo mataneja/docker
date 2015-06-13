@@ -38,3 +38,18 @@ func (s *DockerSuite) TestVolumesApiInspect(c *check.C) {
 	c.Assert(json.Unmarshal(b, &volume), check.IsNil)
 	c.Assert(volume.Mountpoint, check.Equals, volPath)
 }
+
+func (s *DockerSuite) TestVolumesApiCreate(c *check.C) {
+	config := types.VolumeCreateRequest{
+		Name: "test",
+	}
+	status, b, err := sockRequest("POST", "/volumes", config)
+	c.Assert(err, check.IsNil)
+	c.Assert(status, check.Equals, 200)
+
+	var vol types.Volume
+	err = json.Unmarshal(b, &vol)
+	c.Assert(err, check.IsNil)
+
+	c.Assert(path.Base(path.Dir(vol.Mountpoint)), check.Equals, config.Name)
+}

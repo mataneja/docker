@@ -20,7 +20,7 @@ type volumeDriverProxy struct {
 	c client
 }
 
-func (pp *volumeDriverProxy) Create(name string) error {
+func (pp *volumeDriverProxy) Create(name string, opts map[string]string) error {
 	args := volumeDriverRequest{name}
 	var ret volumeDriverResponse
 	err := pp.c.Call("VolumeDriver.Create", args, &ret)
