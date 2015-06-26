@@ -2071,6 +2071,125 @@ Status Codes:
 -   **404** – no such exec instance
 -   **500** - server error
 
+## 2.4 Volumes
+
+### List volumes
+
+`GET /volumes`
+
+**Example request**:
+
+  GET /volumes?size=true HTTP/1.1
+
+**Example response**:
+
+  HTTP/1.1 200 OK
+  Content-Type: application/json
+
+  [
+    {
+      "Name": "tardis",
+      "Driver": "local",
+      "Mountpoint": "/var/lib/docker/volumes/tardis"
+    }
+  ]
+
+Status Codes:
+
+-   **200** - no error
+-   **500** - server error
+
+### Create a volume
+
+`POST /volumes`
+
+Create a volume
+
+**Example request**:
+
+  POST /volumes HTTP/1.1
+  Content-Type: application/json
+
+  {
+    "Name": "tardis"
+  }
+
+**Example response**:
+
+  HTTP/1.1 201 Created
+  Content-Type: application/json
+
+  {
+    "Name": "tardis"
+    "Driver": "local",
+    "Mountpoint": "/var/lib/docker/volumes/tardis"
+  }
+
+Status Codes:
+
+- **201** - no error
+- **500**  - server error
+
+Json Parameters:
+
+- **Name** - The name for the created volume. If not specified a name is
+    generated
+- **Driver** - Name of the volume driver to use. Default is `local`
+- **DriverOpts** - A mapping of driver options and values. These options are
+    passed directly to the driver, and are driver specific.
+
+### Inspect a volume
+
+`GET /volumes/(driver)/(name)`
+
+Return low-level informtion on the volume `name`
+
+**Example request**:
+
+    GET /volumes/local/tardis?size=true
+
+**Example resppnse**:
+
+  HTTP/1.1 200 OK
+  Content-Type: application/json
+
+  {
+    "Name": "tardis",
+    "Driver": "local",
+    "Mountpoint": "/var/lib/docker/volumes/tardis"
+    "Size": 14862136
+  }
+
+Query Parameters:
+
+-   **size** - 1/True/true or 0/False/false, Show the volume's size on disk
+
+Status Codes:
+
+-   **200** - no error
+-   **404** - no such volume
+-   **500** - server error
+
+### Remove a volume
+
+`DELETE /volumes/(driver)/(name)`
+
+Instruct the driver (driver) to remove the volume (name).
+
+**Example request**:
+
+  DELETE /volumes/local/tardis HTTP/1.1
+
+**Example response**:
+
+  HTTP/1.1 204 No Content
+
+Status Codes
+
+-   **204** - no error
+-   **404** - no such volume or volume driver
+-   **500** - server error
+
 # 3. Going further
 
 ## 3.1 Inside `docker run`

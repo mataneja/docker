@@ -68,6 +68,27 @@ Running `docker rmi` emits an **untag** event when removing an image name.  The 
 
 ### What's new
 
+`GET /volumes`
+
+**New!**
+List volumes from all volume drivers
+
+`POST /volumes`
+
+**New!**
+Create a volume
+
+`GET /volumes/(driver)/(name)`
+
+**New!**
+Get low-level information about a volume
+
+`DELETE /volumes/(driver)/(name)`
+
+**New!**
+Remove a volume with the specified name
+
+
 ## v1.19
 
 ### Full documentation
