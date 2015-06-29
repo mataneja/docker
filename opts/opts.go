@@ -60,7 +60,7 @@ func UlimitMapVar(values map[string]*ulimit.Ulimit, names []string, usage string
 	flag.Var(NewUlimitOpt(values), names, usage)
 }
 
-// ListOpts type
+// Stores options in a slice
 type ListOpts struct {
 	values    *[]string
 	validator ValidatorFctType
@@ -138,7 +138,7 @@ func (opts *ListOpts) Len() int {
 	return len((*opts.values))
 }
 
-//MapOpts type
+// Stores options in a map
 type MapOpts struct {
 	values    map[string]string
 	validator ValidatorFctType
@@ -161,8 +161,17 @@ func (opts *MapOpts) Set(value string) error {
 	return nil
 }
 
+func (opts *MapOpts) GetAll() map[string]string {
+	return opts.values
+}
+
 func (opts *MapOpts) String() string {
 	return fmt.Sprintf("%v", map[string]string((opts.values)))
+}
+
+func NewMapOpt(validator ValidatorFctType) *MapOpts {
+	values := make(map[string]string)
+	return &MapOpts{values, validator}
 }
 
 func newMapOpt(values map[string]string, validator ValidatorFctType) *MapOpts {

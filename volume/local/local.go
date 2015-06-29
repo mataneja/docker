@@ -94,9 +94,14 @@ func (r *Root) Create(name string, _ map[string]string) (volume.Volume, error) {
 		if os.IsExist(err) {
 			return nil, fmt.Errorf("volume already exists under %s", filepath.Dir(path))
 		}
-		r.volumes[name] = v
+		return nil, err
 	}
-	v.use()
+	v = &Volume{
+		driverName: r.Name(),
+		name:       name,
+		path:       path,
+	}
+	r.volumes[name] = v
 	return v, nil
 }
 
@@ -122,7 +127,6 @@ func (r *Root) Remove(v volume.Volume) error {
 
 	delete(r.volumes, lv.name)
 	return os.RemoveAll(filepath.Dir(lv.path))
-	return nil
 }
 
 func (r *Root) Get(name string) (volume.Volume, error) {
