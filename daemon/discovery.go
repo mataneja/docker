@@ -11,6 +11,7 @@ import (
 	"github.com/docker/docker/pkg/discovery"
 
 	// Register the libkv backends for discovery.
+	_ "github.com/docker/docker/kvstore"
 	_ "github.com/docker/docker/pkg/discovery/kv"
 )
 
