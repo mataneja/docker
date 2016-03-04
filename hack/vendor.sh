@@ -87,4 +87,9 @@ clone git golang.org/x/oauth2 2baa8a1b9338cf13d9eeb27696d761155fa480be https://g
 clone git google.golang.org/api dc6d2353af16e2a2b0ff6986af051d473a4ed468 https://code.googlesource.com/google-api-go-client
 clone git google.golang.org/cloud dae7e3d993bc3812a2185af60552bb6b847e52a0 https://code.googlesource.com/gocloud
 
+# drax deps
+clone git github.com/cpuguy83/drax 6f2a98aa053a8bc97d300ea7be27f93c8edb0878
+clone git github.com/hashicorp/raft 057b893fd996696719e98b6c44649ea14968c811
+clone git github.com/hashicorp/raft-boltdb d1e82c1ec3f15ee991f7cc7ffd5b67ff6f5bbaee
+
 clean
