@@ -12,11 +12,11 @@ type StoreReducer func(*Container)
 // any container store must implement.
 type Store interface {
 	// Add appends a new container to the store.
-	Add(string, *Container)
+	Add(string, *Container) error
 	// Get returns a container from the store by the identifier it was stored with.
 	Get(string) *Container
 	// Delete removes a container from the store by the identifier it was stored with.
-	Delete(string)
+	Delete(string) error
 	// List returns a list of containers from the store.
 	List() []*Container
 	// Size returns the number of containers in the store.
@@ -25,4 +25,8 @@ type Store interface {
 	First(StoreFilter) *Container
 	// ApplyAll calls the reducer function with every container in the store.
 	ApplyAll(StoreReducer)
+	// Commit commits a change to a container to the store
+	// There is no need to call commit when using ApplyAll, this function is only
+	// for syncing changes to an individual container with the container store
+	Commit(*Container) error
 }

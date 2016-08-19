@@ -165,7 +165,8 @@ func (daemon *Daemon) verifyVolumesInfo(container *container.Container) error {
 				container.MountPoints[destination] = &m
 			}
 		}
-		return container.ToDisk()
+		err := daemon.containers.Commit(container)
+		return errors.Wrap(err, "error saving container state")
 	}
 	return nil
 }

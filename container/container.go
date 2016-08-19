@@ -98,6 +98,12 @@ type CommonContainer struct {
 	LogCopier      *logger.Copier `json:"-"`
 	restartManager restartmanager.RestartManager
 	attachContext  *attachContext
+
+	// CurrentVersion is used by the container store to ensure no conflicts between
+	// two calls to update a container
+	// This does not need to persist to disk since the actual version number does
+	// not matter between daemon restarts.
+	CurrentVersion uint64 `json:"-"`
 }
 
 // NewBaseContainer creates a new container with its
@@ -114,6 +120,16 @@ func NewBaseContainer(id, root string) *Container {
 			attachContext: &attachContext{},
 		},
 	}
+}
+
+// Copy creates a copy of the container object
+func (container *Container) Copy() *Container {
+	var copy Container
+	copy = *container
+	if container.State != nil {
+		copy.State = container.State.copy()
+	}
+	return &copy
 }
 
 // FromDisk loads the container configuration stored in the host.

@@ -52,7 +52,7 @@ func (daemon *Daemon) update(name string, hostConfig *container.HostConfig) erro
 		if restoreConfig {
 			container.Lock()
 			container.HostConfig = &backupHostConfig
-			container.ToDisk()
+			daemon.containers.Commit(container)
 			container.Unlock()
 		}
 	}()
@@ -62,6 +62,10 @@ func (daemon *Daemon) update(name string, hostConfig *container.HostConfig) erro
 	}
 
 	if err := container.UpdateContainer(hostConfig); err != nil {
+		restoreConfig = true
+		return errCannotUpdate(container.ID, err)
+	}
+	if err := daemon.containers.Commit(container); err != nil {
 		restoreConfig = true
 		return errCannotUpdate(container.ID, err)
 	}

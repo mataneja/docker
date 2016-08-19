@@ -33,6 +33,16 @@ type State struct {
 	Health            *Health
 }
 
+func (s *State) copy() *State {
+	var copy State
+	copy = *s
+	copy.waitChan = s.waitChan
+	if s.Health != nil {
+		copy.Health = s.Health.copy()
+	}
+	return &copy
+}
+
 // StateStatus is used to return an error type implementing both
 // exec.ExitCode and error.
 // This type is needed as State include a sync.Mutex field which make

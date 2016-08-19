@@ -11,6 +11,13 @@ type Health struct {
 	stop chan struct{} // Write struct{} to stop the monitor
 }
 
+func (s *Health) copy() *Health {
+	var copy Health
+	copy = *s
+	copy.stop = s.stop
+	return &copy
+}
+
 // String returns a human-readable description of the health-check state
 func (s *Health) String() string {
 	// This happens when the container is being shutdown and the monitor has stopped

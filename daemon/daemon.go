@@ -26,6 +26,7 @@ import (
 	"github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/container"
+	"github.com/docker/docker/container/memdbstore"
 	"github.com/docker/docker/daemon/events"
 	"github.com/docker/docker/daemon/exec"
 	"github.com/docker/docker/dockerversion"
@@ -54,9 +55,10 @@ import (
 	"github.com/docker/docker/reference"
 	"github.com/docker/docker/registry"
 	"github.com/docker/docker/runconfig"
+	"github.com/docker/docker/store"
 	volumedrivers "github.com/docker/docker/volume/drivers"
 	"github.com/docker/docker/volume/local"
-	"github.com/docker/docker/volume/store"
+	volumestore "github.com/docker/docker/volume/store"
 	"github.com/docker/libnetwork"
 	nwconfig "github.com/docker/libnetwork/config"
 	"github.com/docker/libtrust"
@@ -78,6 +80,7 @@ type Daemon struct {
 	ID                        string
 	repository                string
 	containers                container.Store
+	store                     store.Store
 	execCommands              *exec.Store
 	referenceStore            reference.Store
 	downloadManager           *xfer.LayerDownloadManager
@@ -91,7 +94,7 @@ type Daemon struct {
 	RegistryService           registry.Service
 	EventsService             *events.Events
 	netController             libnetwork.NetworkController
-	volumes                   *store.VolumeStore
+	volumes                   *volumestore.VolumeStore
 	discoveryWatcher          discoveryReloader
 	root                      string
 	seccompEnabled            bool
@@ -250,7 +253,7 @@ func (daemon *Daemon) restore() error {
 				logrus.Debugf("Resetting RemovalInProgress flag from %v", c.ID)
 				c.ResetRemovalInProgress()
 				c.SetDead()
-				c.ToDisk()
+				daemon.containers.Commit(c)
 			}
 
 			// if c.hostConfig.Links is nil (not just empty), then it is using the old sqlite links and needs to be migrated
@@ -638,7 +641,7 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 
 	d.ID = trustKey.PublicKey().KeyID()
 	d.repository = daemonRepo
-	d.containers = container.NewMemoryStore()
+	d.containers = memdbstore.New()
 	d.execCommands = exec.NewStore()
 	d.referenceStore = referenceStore
 	d.distributionMetadataStore = distributionMetadataStore
@@ -955,7 +958,7 @@ func setDefaultMtu(config *Config) {
 	config.Mtu = defaultNetworkMtu
 }
 
-func (daemon *Daemon) configureVolumes(rootUID, rootGID int) (*store.VolumeStore, error) {
+func (daemon *Daemon) configureVolumes(rootUID, rootGID int) (*volumestore.VolumeStore, error) {
 	volumesDriver, err := local.New(daemon.configStore.Root, rootUID, rootGID)
 	if err != nil {
 		return nil, err
@@ -966,7 +969,7 @@ func (daemon *Daemon) configureVolumes(rootUID, rootGID int) (*store.VolumeStore
 	if !volumedrivers.Register(volumesDriver, volumesDriver.Name()) {
 		return nil, fmt.Errorf("local volume driver could not be registered")
 	}
-	return store.New(daemon.configStore.Root)
+	return volumestore.New(daemon.configStore.Root)
 }
 
 // IsShuttingDown tells whether the daemon is shutting down or not

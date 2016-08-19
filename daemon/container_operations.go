@@ -971,10 +971,8 @@ func (daemon *Daemon) ConnectToNetwork(container *container.Container, idOrName 
 			return err
 		}
 	}
-	if err := container.ToDiskLocking(); err != nil {
-		return fmt.Errorf("Error saving container to disk: %v", err)
-	}
-	return nil
+	err := daemon.containers.Commit(container)
+	return errors.Wrap(err, "error while saving container state")
 }
 
 // DisconnectFromNetwork disconnects container from network n.
@@ -1007,10 +1005,9 @@ func (daemon *Daemon) DisconnectFromNetwork(container *container.Container, netw
 		return err
 	}
 
-	if err := container.ToDiskLocking(); err != nil {
-		return fmt.Errorf("Error saving container to disk: %v", err)
+	if err := daemon.containers.Commit(container); err != nil {
+		return errors.Wrap(err, "error while saving container state")
 	}
-
 	if n != nil {
 		attributes := map[string]string{
 			"container": container.ID,

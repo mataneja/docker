@@ -147,10 +147,6 @@ func (daemon *Daemon) create(params types.ContainerCreateConfig, managed bool) (
 
 	daemon.updateContainerNetworkSettings(container, endpointsConfigs)
 
-	if err := container.ToDisk(); err != nil {
-		logrus.Errorf("Error saving new container to disk: %v", err)
-		return nil, err
-	}
 	if err := daemon.Register(container); err != nil {
 		return nil, err
 	}

@@ -59,7 +59,7 @@ func (daemon *Daemon) ContainerStart(name string, hostConfig *containertypes.Hos
 				// if user has change the network mode on starting, clean up the
 				// old networks. It is a deprecated feature and has been removed in Docker 1.12
 				container.NetworkSettings.Networks = nil
-				if err := container.ToDisk(); err != nil {
+				if err := daemon.containers.Commit(container); err != nil {
 					return err
 				}
 			}
@@ -118,7 +118,7 @@ func (daemon *Daemon) containerStart(container *container.Container, checkpoint 
 			if container.ExitCode() == 0 {
 				container.SetExitCode(128)
 			}
-			container.ToDisk()
+			daemon.containers.Commit(container)
 			daemon.Cleanup(container)
 			// if containers AutoRemove flag is set, remove it after clean up
 			if container.HostConfig.AutoRemove {

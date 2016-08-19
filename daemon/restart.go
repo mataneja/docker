@@ -52,8 +52,8 @@ func (daemon *Daemon) containerRestart(container *container.Container, seconds i
 		container.HostConfig.AutoRemove = autoRemove
 		// containerStop will write HostConfig to disk, we shall restore AutoRemove
 		// in disk too
-		if toDiskErr := container.ToDiskLocking(); toDiskErr != nil {
-			logrus.Errorf("Write container to disk error: %v", toDiskErr)
+		if commitErr := daemon.containers.Commit(container); commitErr != nil {
+			logrus.Errorf("Write container to disk error: %v", commitErr)
 		}
 
 		if err != nil {

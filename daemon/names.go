@@ -30,7 +30,7 @@ func (daemon *Daemon) registerName(container *container.Container) error {
 		}
 		container.Name = name
 
-		if err := container.ToDiskLocking(); err != nil {
+		if err := daemon.containers.Commit(container); err != nil {
 			logrus.Errorf("Error saving container name to disk: %v", err)
 		}
 	}

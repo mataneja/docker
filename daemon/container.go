@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/docker/docker/api/errors"
+	dockererrors "github.com/docker/docker/api/errors"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/container"
@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/pkg/truncindex"
 	"github.com/docker/docker/runconfig/opts"
 	"github.com/docker/go-connections/nat"
+	"github.com/pkg/errors"
 )
 
 // GetContainer looks for a container using the provided information, which could be
@@ -28,7 +29,7 @@ import (
 //  If none of these searches succeed, an error is returned
 func (daemon *Daemon) GetContainer(prefixOrName string) (*container.Container, error) {
 	if len(prefixOrName) == 0 {
-		return nil, errors.NewBadRequestError(fmt.Errorf("No container name or ID supplied"))
+		return nil, dockererrors.NewBadRequestError(fmt.Errorf("No container name or ID supplied"))
 	}
 
 	if containerByID := daemon.containers.Get(prefixOrName); containerByID != nil {
@@ -47,7 +48,7 @@ func (daemon *Daemon) GetContainer(prefixOrName string) (*container.Container, e
 		// When truncindex defines an error type, use that instead
 		if indexError == truncindex.ErrNotExist {
 			err := fmt.Errorf("No such container: %s", prefixOrName)
-			return nil, errors.NewRequestNotFoundError(err)
+			return nil, dockererrors.NewRequestNotFoundError(err)
 		}
 		return nil, indexError
 	}
@@ -96,7 +97,9 @@ func (daemon *Daemon) Register(c *container.Container) error {
 		c.StreamConfig.NewNopInputPipe()
 	}
 
-	daemon.containers.Add(c.ID, c)
+	if err := daemon.containers.Add(c.ID, c); err != nil {
+		return errors.Wrap(err, "could not save container to store")
+	}
 	daemon.idIndex.Add(c.ID)
 
 	return nil
@@ -199,7 +202,7 @@ func (daemon *Daemon) setHostConfig(container *container.Container, hostConfig *
 	}
 
 	container.HostConfig = hostConfig
-	return container.ToDisk()
+	return nil
 }
 
 // verifyContainerSettings performs validation of the hostconfig and config
