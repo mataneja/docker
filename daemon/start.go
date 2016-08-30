@@ -216,8 +216,8 @@ func (daemon *Daemon) Cleanup(container *container.Container) {
 		logrus.Warnf("%s cleanup: failed to unmount secrets: %s", container.ID, err)
 	}
 
-	for _, eConfig := range container.ExecCommands.Commands() {
-		daemon.unregisterExecCommand(container, eConfig)
+	for _, eConfig := range daemon.execCommands.CommandsByContainerID(container.ID) {
+		daemon.unregisterExecCommand(eConfig)
 	}
 
 	if container.BaseFS != "" {

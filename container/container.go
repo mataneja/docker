@@ -20,7 +20,6 @@ import (
 	mounttypes "github.com/docker/docker/api/types/mount"
 	networktypes "github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/container/stream"
-	"github.com/docker/docker/daemon/exec"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/network"
@@ -91,7 +90,6 @@ type CommonContainer struct {
 	HasBeenManuallyStopped bool // used for unless-stopped restart policy
 	MountPoints            map[string]*volume.MountPoint
 	HostConfig             *containertypes.HostConfig        `json:"-"` // do not serialize the host config in the json, otherwise we'll make the container unportable
-	ExecCommands           *exec.Store                       `json:"-"`
 	Secrets                []*containertypes.ContainerSecret `json:"-"` // do not serialize
 	// logDriver for closing
 	LogDriver      logger.Logger  `json:"-"`
@@ -113,7 +111,6 @@ func NewBaseContainer(id, root string) *Container {
 		CommonContainer: CommonContainer{
 			ID:            id,
 			State:         NewState(),
-			ExecCommands:  exec.NewStore(),
 			Root:          root,
 			MountPoints:   make(map[string]*volume.MountPoint),
 			StreamConfig:  stream.NewConfig(),
@@ -378,11 +375,6 @@ func (container *Container) GetProcessLabel() string {
 // This label is empty if the container is privileged.
 func (container *Container) GetMountLabel() string {
 	return container.MountLabel
-}
-
-// GetExecIDs returns the list of exec commands running on the container.
-func (container *Container) GetExecIDs() []string {
-	return container.ExecCommands.List()
 }
 
 // Attach connects to the container's TTY, delegating to standard

@@ -26,13 +26,14 @@ import (
 	"github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/container"
-	"github.com/docker/docker/container/memdbstore"
 	"github.com/docker/docker/daemon/events"
 	"github.com/docker/docker/daemon/exec"
 	"github.com/docker/docker/dockerversion"
 	"github.com/docker/docker/plugin"
 	"github.com/docker/libnetwork/cluster"
 	// register graph drivers
+	containerstore "github.com/docker/docker/container/store"
+	execstore "github.com/docker/docker/daemon/exec/store"
 	_ "github.com/docker/docker/daemon/graphdriver/register"
 	dmetadata "github.com/docker/docker/distribution/metadata"
 	"github.com/docker/docker/distribution/xfer"
@@ -81,7 +82,7 @@ type Daemon struct {
 	repository                string
 	containers                container.Store
 	store                     store.Store
-	execCommands              *exec.Store
+	execCommands              exec.Store
 	referenceStore            reference.Store
 	downloadManager           *xfer.LayerDownloadManager
 	uploadManager             *xfer.LayerUploadManager
@@ -639,10 +640,12 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 		return nil, fmt.Errorf("Devices cgroup isn't mounted")
 	}
 
+	d.store = store.NewMemoryStore()
+	d.execCommands = execstore.New(d.store)
+	d.containers = containerstore.New(d.store)
+
 	d.ID = trustKey.PublicKey().KeyID()
 	d.repository = daemonRepo
-	d.containers = memdbstore.New()
-	d.execCommands = exec.NewStore()
 	d.referenceStore = referenceStore
 	d.distributionMetadataStore = distributionMetadataStore
 	d.trustKey = trustKey
@@ -813,6 +816,7 @@ func (daemon *Daemon) Shutdown() error {
 	if err := daemon.cleanupMounts(); err != nil {
 		return err
 	}
+	daemon.store.Close()
 
 	return nil
 }

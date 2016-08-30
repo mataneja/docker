@@ -24,11 +24,9 @@ import (
 // Seconds to wait after sending TERM before trying KILL
 const termProcessTimeout = 10
 
-func (d *Daemon) registerExecCommand(container *container.Container, config *exec.Config) {
-	// Storing execs in container in order to kill them gracefully whenever the container is stopped or removed.
-	container.ExecCommands.Add(config.ID, config)
+func (d *Daemon) registerExecCommand(config *exec.Config) error {
 	// Storing execs in daemon for easy access via remote API.
-	d.execCommands.Add(config.ID, config)
+	return d.execCommands.Add(config)
 }
 
 // ExecExists looks up the exec instance and returns a bool if it exists or not.
@@ -69,8 +67,7 @@ func (d *Daemon) getExecConfig(name string) (*exec.Config, error) {
 	return nil, errExecNotFound(name)
 }
 
-func (d *Daemon) unregisterExecCommand(container *container.Container, execConfig *exec.Config) {
-	container.ExecCommands.Delete(execConfig.ID)
+func (d *Daemon) unregisterExecCommand(execConfig *exec.Config) {
 	d.execCommands.Delete(execConfig.ID)
 }
 
@@ -132,7 +129,9 @@ func (d *Daemon) ContainerExecCreate(name string, config *types.ExecConfig) (str
 		execConfig.User = container.Config.User
 	}
 
-	d.registerExecCommand(container, execConfig)
+	if err := d.registerExecCommand(execConfig); err != nil {
+		return "", err
+	}
 
 	d.LogContainerEvent(container, "exec_create: "+execConfig.Entrypoint+" "+strings.Join(execConfig.Args, " "))
 
@@ -247,16 +246,13 @@ func (d *Daemon) ContainerExecStart(ctx context.Context, name string, stdin io.R
 // of exec configs that are no longer part of the container.
 func (d *Daemon) execCommandGC() {
 	for range time.Tick(5 * time.Minute) {
-		var (
-			cleaned          int
-			liveExecCommands = d.containerExecIds()
-		)
-		for id, config := range d.execCommands.Commands() {
+		var cleaned int
+		for _, config := range d.execCommands.Commands() {
 			if config.CanRemove {
 				cleaned++
-				d.execCommands.Delete(id)
+				d.execCommands.Delete(config.ID)
 			} else {
-				if _, exists := liveExecCommands[id]; !exists {
+				if config.ExitCode != nil {
 					config.CanRemove = true
 				}
 			}
@@ -265,16 +261,4 @@ func (d *Daemon) execCommandGC() {
 			logrus.Debugf("clean %d unused exec commands", cleaned)
 		}
 	}
-}
-
-// containerExecIds returns a list of all the current exec ids that are in use
-// and running inside a container.
-func (d *Daemon) containerExecIds() map[string]struct{} {
-	ids := map[string]struct{}{}
-	for _, c := range d.containers.List() {
-		for _, id := range c.ExecCommands.List() {
-			ids[id] = struct{}{}
-		}
-	}
-	return ids
 }

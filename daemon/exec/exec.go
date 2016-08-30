@@ -10,6 +10,16 @@ import (
 	"github.com/docker/docker/pkg/stringid"
 )
 
+type Store interface {
+	Commands() []*Config
+	CommandsByContainerID(id string) []*Config
+	Add(*Config) error
+	Get(id string) *Config
+	Commit(*Config) error
+	Delete(id string) error
+	List(containerID string) []string
+}
+
 // Config holds the configurations for execs. The Daemon keeps
 // track of both running and finished execs so that they can be
 // examined both during and after completion.
@@ -42,6 +52,17 @@ func NewConfig() *Config {
 	}
 }
 
+func (c *Config) Copy() *Config {
+	var copy Config
+	copy = *c
+	if c.ExitCode != nil {
+		var ec int
+		ec = *c.ExitCode
+		copy.ExitCode = &ec
+	}
+	return &copy
+}
+
 // InitializeStdio is called by libcontainerd to connect the stdio.
 func (c *Config) InitializeStdio(iop libcontainerd.IOPipe) error {
 	c.StreamConfig.CopyToPipe(iop)
@@ -60,59 +81,4 @@ func (c *Config) InitializeStdio(iop libcontainerd.IOPipe) error {
 // CloseStreams closes the stdio streams for the exec
 func (c *Config) CloseStreams() error {
 	return c.StreamConfig.CloseStreams()
-}
-
-// Store keeps track of the exec configurations.
-type Store struct {
-	commands map[string]*Config
-	sync.RWMutex
-}
-
-// NewStore initializes a new exec store.
-func NewStore() *Store {
-	return &Store{commands: make(map[string]*Config, 0)}
-}
-
-// Commands returns the exec configurations in the store.
-func (e *Store) Commands() map[string]*Config {
-	e.RLock()
-	commands := make(map[string]*Config, len(e.commands))
-	for id, config := range e.commands {
-		commands[id] = config
-	}
-	e.RUnlock()
-	return commands
-}
-
-// Add adds a new exec configuration to the store.
-func (e *Store) Add(id string, Config *Config) {
-	e.Lock()
-	e.commands[id] = Config
-	e.Unlock()
-}
-
-// Get returns an exec configuration by its id.
-func (e *Store) Get(id string) *Config {
-	e.RLock()
-	res := e.commands[id]
-	e.RUnlock()
-	return res
-}
-
-// Delete removes an exec configuration from the store.
-func (e *Store) Delete(id string) {
-	e.Lock()
-	delete(e.commands, id)
-	e.Unlock()
-}
-
-// List returns the list of exec ids in the store.
-func (e *Store) List() []string {
-	var IDs []string
-	e.RLock()
-	for id := range e.commands {
-		IDs = append(IDs, id)
-	}
-	e.RUnlock()
-	return IDs
 }

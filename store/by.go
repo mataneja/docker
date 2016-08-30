@@ -46,3 +46,12 @@ func (b byName) isBy() {
 func ByName(name string) By {
 	return byName(name)
 }
+
+type byContainerID string
+
+func (b byContainerID) isBy() {
+}
+
+func ByContainerID(containerID string) By {
+	return byContainerID(containerID)
+}

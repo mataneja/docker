@@ -1,4 +1,4 @@
-package memdbstore
+package store
 
 import (
 	"sync"
@@ -8,8 +8,9 @@ import (
 	"github.com/docker/docker/store"
 )
 
-func New() container.Store {
-	return &memdbWrapper{store.NewMemoryStore()}
+// New returns a new container Store using the memdbWrapper
+func New(s store.Store) container.Store {
+	return &memdbWrapper{s}
 }
 
 type memdbWrapper struct {

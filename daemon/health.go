@@ -82,7 +82,7 @@ func (p *cmdProbe) run(ctx context.Context, d *Daemon, container *container.Cont
 	execConfig.Privileged = false
 	execConfig.User = container.Config.User
 
-	d.registerExecCommand(container, execConfig)
+	d.registerExecCommand(execConfig)
 	d.LogContainerEvent(container, "exec_create: "+execConfig.Entrypoint+" "+strings.Join(execConfig.Args, " "))
 
 	output := &limitedBuffer{}

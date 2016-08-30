@@ -82,7 +82,7 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 		}
 		return daemon.postRunProcessing(c, e)
 	case libcontainerd.StateExitProcess:
-		if execConfig := c.ExecCommands.Get(e.ProcessID); execConfig != nil {
+		if execConfig := daemon.execCommands.Get(e.ProcessID); execConfig != nil {
 			ec := int(e.ExitCode)
 			execConfig.Lock()
 			defer execConfig.Unlock()
@@ -92,10 +92,6 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 			if err := execConfig.CloseStreams(); err != nil {
 				logrus.Errorf("%s: %s", c.ID, err)
 			}
-
-			// remove the exec command from the container's store only and not the
-			// daemon's store so that the exec command can be inspected.
-			c.ExecCommands.Delete(execConfig.ID)
 		} else {
 			logrus.Warnf("Ignoring StateExitProcess for %v but no exec command found", e)
 		}
