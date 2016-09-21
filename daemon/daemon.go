@@ -27,7 +27,6 @@ import (
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/container"
 	"github.com/docker/docker/daemon/events"
-	"github.com/docker/docker/daemon/exec"
 	"github.com/docker/libnetwork/cluster"
 	// register graph drivers
 	_ "github.com/docker/docker/daemon/graphdriver/register"
@@ -73,7 +72,7 @@ type Daemon struct {
 	ID                        string
 	repository                string
 	containers                container.Store
-	execCommands              *exec.Store
+	execCommands              *container.ExecStore
 	referenceStore            reference.Store
 	downloadManager           *xfer.LayerDownloadManager
 	uploadManager             *xfer.LayerUploadManager
@@ -640,7 +639,7 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	d.ID = trustKey.PublicKey().KeyID()
 	d.repository = daemonRepo
 	d.containers = container.NewMemoryStore()
-	d.execCommands = exec.NewStore()
+	d.execCommands = container.NewExecStore()
 	d.referenceStore = referenceStore
 	d.distributionMetadataStore = distributionMetadataStore
 	d.trustKey = trustKey

@@ -13,7 +13,6 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/container"
-	"github.com/docker/docker/daemon/exec"
 	"github.com/docker/docker/libcontainerd"
 	"github.com/docker/docker/pkg/pools"
 	"github.com/docker/docker/pkg/signal"
@@ -25,7 +24,7 @@ import (
 // Seconds to wait after sending TERM before trying KILL
 const termProcessTimeout = 10
 
-func (d *Daemon) registerExecCommand(container *container.Container, config *exec.Config) {
+func (d *Daemon) registerExecCommand(container *container.Container, config *container.ExecConfig) {
 	// Storing execs in container in order to kill them gracefully whenever the container is stopped or removed.
 	container.ExecCommands.Add(config.ID, config)
 	// Storing execs in daemon for easy access via remote API.
@@ -43,7 +42,7 @@ func (d *Daemon) ExecExists(name string) (bool, error) {
 
 // getExecConfig looks up the exec instance by name. If the container associated
 // with the exec instance is stopped or paused, it will return an error.
-func (d *Daemon) getExecConfig(name string) (*exec.Config, error) {
+func (d *Daemon) getExecConfig(name string) (*container.ExecConfig, error) {
 	ec := d.execCommands.Get(name)
 
 	// If the exec is found but its container is not in the daemon's list of
@@ -70,7 +69,7 @@ func (d *Daemon) getExecConfig(name string) (*exec.Config, error) {
 	return nil, errExecNotFound(name)
 }
 
-func (d *Daemon) unregisterExecCommand(container *container.Container, execConfig *exec.Config) {
+func (d *Daemon) unregisterExecCommand(container *container.Container, execConfig *container.ExecConfig) {
 	container.ExecCommands.Delete(execConfig.ID)
 	d.execCommands.Delete(execConfig.ID)
 }
@@ -95,7 +94,7 @@ func (d *Daemon) getActiveContainer(name string) (*container.Container, error) {
 
 // ContainerExecCreate sets up an exec in a running container.
 func (d *Daemon) ContainerExecCreate(name string, config *types.ExecConfig) (string, error) {
-	container, err := d.getActiveContainer(name)
+	c, err := d.getActiveContainer(name)
 	if err != nil {
 		return "", err
 	}
@@ -112,11 +111,11 @@ func (d *Daemon) ContainerExecCreate(name string, config *types.ExecConfig) (str
 		}
 	}
 
-	execConfig := exec.NewConfig()
+	execConfig := container.NewExecConfig()
 	execConfig.OpenStdin = config.AttachStdin
 	execConfig.OpenStdout = config.AttachStdout
 	execConfig.OpenStderr = config.AttachStderr
-	execConfig.ContainerID = container.ID
+	execConfig.ContainerID = c.ID
 	execConfig.DetachKeys = keys
 	execConfig.Entrypoint = entrypoint
 	execConfig.Args = args
@@ -129,14 +128,14 @@ func (d *Daemon) ContainerExecCreate(name string, config *types.ExecConfig) (str
 	if config.Tty {
 		execConfig.Env = append(execConfig.Env, "TERM=xterm")
 	}
-	execConfig.Env = utils.ReplaceOrAppendEnvValues(execConfig.Env, container.Config.Env)
+	execConfig.Env = utils.ReplaceOrAppendEnvValues(execConfig.Env, c.Config.Env)
 	if len(execConfig.User) == 0 {
-		execConfig.User = container.Config.User
+		execConfig.User = c.Config.User
 	}
 
-	d.registerExecCommand(container, execConfig)
+	d.registerExecCommand(c, execConfig)
 
-	d.LogContainerEvent(container, "exec_create: "+execConfig.Entrypoint+" "+strings.Join(execConfig.Args, " "))
+	d.LogContainerEvent(c, "exec_create: "+execConfig.Entrypoint+" "+strings.Join(execConfig.Args, " "))
 
 	return execConfig.ID, nil
 }

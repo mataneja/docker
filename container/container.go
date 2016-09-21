@@ -19,7 +19,6 @@ import (
 	containertypes "github.com/docker/docker/api/types/container"
 	mounttypes "github.com/docker/docker/api/types/mount"
 	networktypes "github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/daemon/exec"
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/daemon/logger/jsonfilelog"
 	"github.com/docker/docker/daemon/network"
@@ -59,7 +58,7 @@ func (DetachError) Error() string {
 // CommonContainer holds the fields for a container which are
 // applicable across all platforms supported by the daemon.
 type CommonContainer struct {
-	*runconfig.StreamConfig
+	*StreamConfig
 	// embed for Container to support states directly.
 	*State          `json:"State"` // Needed for remote api version <= 1.11
 	Root            string         `json:"-"` // Path to the "home" of the container, including metadata.
@@ -84,7 +83,7 @@ type CommonContainer struct {
 	HasBeenManuallyStopped bool // used for unless-stopped restart policy
 	MountPoints            map[string]*volume.MountPoint
 	HostConfig             *containertypes.HostConfig `json:"-"` // do not serialize the host config in the json, otherwise we'll make the container unportable
-	ExecCommands           *exec.Store                `json:"-"`
+	ExecCommands           *ExecStore                 `json:"-"`
 	// logDriver for closing
 	LogDriver      logger.Logger  `json:"-"`
 	LogCopier      *logger.Copier `json:"-"`
@@ -99,10 +98,10 @@ func NewBaseContainer(id, root string) *Container {
 		CommonContainer: CommonContainer{
 			ID:            id,
 			State:         NewState(),
-			ExecCommands:  exec.NewStore(),
+			ExecCommands:  NewExecStore(),
 			Root:          root,
 			MountPoints:   make(map[string]*volume.MountPoint),
-			StreamConfig:  runconfig.NewStreamConfig(),
+			StreamConfig:  NewStreamConfig(),
 			attachContext: &attachContext{},
 		},
 	}
@@ -372,7 +371,7 @@ func (container *Container) Attach(stdin io.ReadCloser, stdout io.Writer, stderr
 
 // AttachStreams connects streams to a TTY.
 // Used by exec too. Should this move somewhere else?
-func AttachStreams(ctx context.Context, streamConfig *runconfig.StreamConfig, openStdin, stdinOnce, tty bool, stdin io.ReadCloser, stdout io.Writer, stderr io.Writer, keys []byte) chan error {
+func AttachStreams(ctx context.Context, streamConfig *StreamConfig, openStdin, stdinOnce, tty bool, stdin io.ReadCloser, stdout io.Writer, stderr io.Writer, keys []byte) chan error {
 	var (
 		cStdout, cStderr io.ReadCloser
 		cStdin           io.WriteCloser

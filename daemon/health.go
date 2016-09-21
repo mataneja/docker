@@ -14,7 +14,6 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/container"
-	"github.com/docker/docker/daemon/exec"
 )
 
 const (
@@ -59,8 +58,8 @@ type cmdProbe struct {
 
 // exec the healthcheck command in the container.
 // Returns the exit code and probe output (if any)
-func (p *cmdProbe) run(ctx context.Context, d *Daemon, container *container.Container) (*types.HealthcheckResult, error) {
-	cmdSlice := strslice.StrSlice(container.Config.Healthcheck.Test)[1:]
+func (p *cmdProbe) run(ctx context.Context, d *Daemon, c *container.Container) (*types.HealthcheckResult, error) {
+	cmdSlice := strslice.StrSlice(c.Config.Healthcheck.Test)[1:]
 	if p.shell {
 		if runtime.GOOS != "windows" {
 			cmdSlice = append([]string{"/bin/sh", "-c"}, cmdSlice...)
@@ -69,20 +68,20 @@ func (p *cmdProbe) run(ctx context.Context, d *Daemon, container *container.Cont
 		}
 	}
 	entrypoint, args := d.getEntrypointAndArgs(strslice.StrSlice{}, cmdSlice)
-	execConfig := exec.NewConfig()
+	execConfig := container.NewExecConfig()
 	execConfig.OpenStdin = false
 	execConfig.OpenStdout = true
 	execConfig.OpenStderr = true
-	execConfig.ContainerID = container.ID
+	execConfig.ContainerID = c.ID
 	execConfig.DetachKeys = []byte{}
 	execConfig.Entrypoint = entrypoint
 	execConfig.Args = args
 	execConfig.Tty = false
 	execConfig.Privileged = false
-	execConfig.User = container.Config.User
+	execConfig.User = c.Config.User
 
-	d.registerExecCommand(container, execConfig)
-	d.LogContainerEvent(container, "exec_create: "+execConfig.Entrypoint+" "+strings.Join(execConfig.Args, " "))
+	d.registerExecCommand(c, execConfig)
+	d.LogContainerEvent(c, "exec_create: "+execConfig.Entrypoint+" "+strings.Join(execConfig.Args, " "))
 
 	output := &limitedBuffer{}
 	err := d.ContainerExecStart(ctx, execConfig.ID, nil, output, output)

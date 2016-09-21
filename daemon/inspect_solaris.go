@@ -4,7 +4,6 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/backend"
 	"github.com/docker/docker/container"
-	"github.com/docker/docker/daemon/exec"
 )
 
 // This sets platform-specific fields
@@ -31,7 +30,7 @@ func addMountPoints(container *container.Container) []types.MountPoint {
 	return mountPoints
 }
 
-func inspectExecProcessConfig(e *exec.Config) *backend.ExecProcessConfig {
+func inspectExecProcessConfig(e *container.ExecConfig) *backend.ExecProcessConfig {
 	return &backend.ExecProcessConfig{
 		Tty:        e.Tty,
 		Entrypoint: e.Entrypoint,

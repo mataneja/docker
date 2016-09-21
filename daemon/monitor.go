@@ -9,9 +9,8 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/daemon/exec"
+	"github.com/docker/docker/container"
 	"github.com/docker/docker/libcontainerd"
-	"github.com/docker/docker/runconfig"
 )
 
 // StateChanged updates daemon state changes from containerd
@@ -121,8 +120,8 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 // AttachStreams is called by libcontainerd to connect the stdio.
 func (daemon *Daemon) AttachStreams(id string, iop libcontainerd.IOPipe) error {
 	var (
-		s  *runconfig.StreamConfig
-		ec *exec.Config
+		s  *container.StreamConfig
+		ec *container.ExecConfig
 	)
 
 	c := daemon.containers.Get(id)

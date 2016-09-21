@@ -1,18 +1,17 @@
-package exec
+package container
 
 import (
 	"sync"
 
 	"github.com/docker/docker/pkg/stringid"
-	"github.com/docker/docker/runconfig"
 )
 
 // Config holds the configurations for execs. The Daemon keeps
 // track of both running and finished execs so that they can be
 // examined both during and after completion.
-type Config struct {
+type ExecConfig struct {
 	sync.Mutex
-	*runconfig.StreamConfig
+	*StreamConfig
 	ID          string
 	Running     bool
 	ExitCode    *int
@@ -30,29 +29,29 @@ type Config struct {
 	Env         []string
 }
 
-// NewConfig initializes the a new exec configuration
-func NewConfig() *Config {
-	return &Config{
+// NewExecConfig initializes the a new exec configuration
+func NewExecConfig() *ExecConfig {
+	return &ExecConfig{
 		ID:           stringid.GenerateNonCryptoID(),
-		StreamConfig: runconfig.NewStreamConfig(),
+		StreamConfig: NewStreamConfig(),
 	}
 }
 
 // Store keeps track of the exec configurations.
-type Store struct {
-	commands map[string]*Config
+type ExecStore struct {
+	commands map[string]*ExecConfig
 	sync.RWMutex
 }
 
 // NewStore initializes a new exec store.
-func NewStore() *Store {
-	return &Store{commands: make(map[string]*Config, 0)}
+func NewExecStore() *ExecStore {
+	return &ExecStore{commands: make(map[string]*ExecConfig, 0)}
 }
 
 // Commands returns the exec configurations in the store.
-func (e *Store) Commands() map[string]*Config {
+func (e *ExecStore) Commands() map[string]*ExecConfig {
 	e.RLock()
-	commands := make(map[string]*Config, len(e.commands))
+	commands := make(map[string]*ExecConfig, len(e.commands))
 	for id, config := range e.commands {
 		commands[id] = config
 	}
@@ -61,14 +60,14 @@ func (e *Store) Commands() map[string]*Config {
 }
 
 // Add adds a new exec configuration to the store.
-func (e *Store) Add(id string, Config *Config) {
+func (e *ExecStore) Add(id string, Config *ExecConfig) {
 	e.Lock()
 	e.commands[id] = Config
 	e.Unlock()
 }
 
 // Get returns an exec configuration by its id.
-func (e *Store) Get(id string) *Config {
+func (e *ExecStore) Get(id string) *ExecConfig {
 	e.RLock()
 	res := e.commands[id]
 	e.RUnlock()
@@ -76,14 +75,14 @@ func (e *Store) Get(id string) *Config {
 }
 
 // Delete removes an exec configuration from the store.
-func (e *Store) Delete(id string) {
+func (e *ExecStore) Delete(id string) {
 	e.Lock()
 	delete(e.commands, id)
 	e.Unlock()
 }
 
 // List returns the list of exec ids in the store.
-func (e *Store) List() []string {
+func (e *ExecStore) List() []string {
 	var IDs []string
 	e.RLock()
 	for id := range e.commands {
