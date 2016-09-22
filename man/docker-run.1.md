@@ -546,9 +546,9 @@ incompatible with any restart policy other than `none`.
    $ docker run -it --storage-opt size=120G fedora /bin/bash
 
    This (size) will allow to set the container rootfs size to 120G at creation time.
-   This option is only available for the `devicemapper`, `btrfs`, `overlay2`  and `zfs` graph drivers.
+   This option is only available for the `devicemapper`, `btrfs`, `overlay`, `overlay2` and `zfs` graph drivers.
    For the `devicemapper`, `btrfs` and `zfs` storage drivers, user cannot pass a size less than the Default BaseFS Size.
-   For the `overlay2` storage driver, the size option is only available if the backing fs is `xfs` and mounted with the `pquota` mount option.
+   For the `overlay` and `overlay2` storage driver, the size option is only available if the backing fs is `xfs` and mounted with the `pquota` mount option.
    Under these conditions, user can pass any size less then the backing fs size.
 
 **--stop-signal**=*SIGTERM*
