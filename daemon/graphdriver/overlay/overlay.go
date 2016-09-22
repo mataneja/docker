@@ -11,17 +11,21 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/daemon/graphdriver"
 	"github.com/docker/docker/daemon/graphdriver/overlayutils"
+	"github.com/docker/docker/daemon/graphdriver/quota"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/fsutils"
 	"github.com/docker/docker/pkg/idtools"
 	"github.com/docker/docker/pkg/locker"
 	"github.com/docker/docker/pkg/mount"
+	"github.com/docker/go-units"
 	"github.com/opencontainers/runc/libcontainer/label"
+	"github.com/pkg/errors"
 )
 
 // This is a small wrapper over the NaiveDiffWriter that lets us have a custom
@@ -29,8 +33,9 @@ import (
 
 var (
 	// ErrApplyDiffFallback is returned to indicate that a normal ApplyDiff is applied as a fallback from Naive diff writer.
-	ErrApplyDiffFallback = fmt.Errorf("Fall back to normal ApplyDiff")
-	backingFs            = "<unknown>"
+	ErrApplyDiffFallback  = errors.New("Fall back to normal ApplyDiff")
+	backingFs             = "<unknown>"
+	projectQuotaSupported = false
 )
 
 // ApplyDiffProtoDriver wraps the ProtoDriver by extending the interface with ApplyDiff method.
@@ -61,6 +66,10 @@ func (d *naiveDiffDriverWithApply) ApplyDiff(id, parent string, diff io.Reader) 
 		return d.Driver.ApplyDiff(id, parent, diff)
 	}
 	return b, err
+}
+
+type overlayOptions struct {
+	quota quota.Quota
 }
 
 // This backend uses the overlay union filesystem for containers
@@ -99,6 +108,8 @@ type Driver struct {
 	ctr           *graphdriver.RefCounter
 	supportsDType bool
 	locker        *locker.Locker
+	quotaCtl      *quota.Control
+	options       overlayOptions
 }
 
 func init() {
@@ -157,6 +168,12 @@ func Init(home string, options []string, uidMaps, gidMaps []idtools.IDMap) (grap
 		ctr:           graphdriver.NewRefCounter(graphdriver.NewFsChecker(graphdriver.FsMagicOverlay)),
 		supportsDType: supportsDType,
 		locker:        locker.New(),
+	}
+
+	if backingFs == "xfs" {
+		if d.quotaCtl, err = quota.NewControl(home); err == nil {
+			projectQuotaSupported = true
+		}
 	}
 
 	return NaiveDiffDriverWithApply(d, uidMaps, gidMaps), nil
@@ -238,12 +255,32 @@ func (d *Driver) CreateReadWrite(id, parent string, opts *graphdriver.CreateOpts
 	return d.Create(id, parent, opts)
 }
 
+// Parse overlay storage options
+func (d *Driver) parseStorageOpt(storageOpt map[string]string, driver *Driver) error {
+	// Read size to set the disk project quota per container
+	for key, val := range storageOpt {
+		key := strings.ToLower(key)
+		switch key {
+		case "size":
+			size, err := units.RAMInBytes(val)
+			if err != nil {
+				return err
+			}
+			driver.options.quota.Size = uint64(size)
+		default:
+			return fmt.Errorf("Unknown option %s", key)
+		}
+	}
+
+	return nil
+}
+
 // Create is used to create the upper, lower, and merge directories required for overlay fs for a given id.
 // The parent filesystem is used to configure these directories for the overlay.
 func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr error) {
 
-	if opts != nil && len(opts.StorageOpt) != 0 {
-		return fmt.Errorf("--storage-opt is not supported for overlay")
+	if opts != nil && len(opts.StorageOpt) != 0 && !projectQuotaSupported {
+		return errors.New("--storage-opt is supported only for overlay over xfs with 'pquota' mount option")
 	}
 
 	dir := d.dir(id)
@@ -265,6 +302,18 @@ func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr
 			os.RemoveAll(dir)
 		}
 	}()
+
+	driver := &Driver{}
+	if err := d.parseStorageOpt(opts.StorageOpt, driver); err != nil {
+		return err
+	}
+
+	if driver.options.quota.Size > 0 && !strings.HasSuffix(dir, "-init") {
+		// enforce container disk project quota
+		if err := d.quotaCtl.SetQuota(dir, driver.options.quota); err != nil {
+			return err
+		}
+	}
 
 	// Toplevel images are just a "root" dir
 	if parent == "" {
@@ -447,7 +496,13 @@ func (d *Driver) ApplyDiff(id string, parent string, diff io.Reader) (size int64
 		}
 	}()
 
-	if err = copyDir(parentRootDir, tmpRootDir, copyHardlink); err != nil {
+	// if quota is used, hardlinks between different volumes are not supported.
+	flags := copyHardlink
+	if projectQuotaSupported == true {
+		flags = 0
+	}
+
+	if err = copyDir(parentRootDir, tmpRootDir, flags); err != nil {
 		return 0, err
 	}
 
