@@ -22,9 +22,6 @@ func (daemon *Daemon) ContainerUnpause(name string) error {
 
 // containerUnpause resumes the container execution after the container is paused.
 func (daemon *Daemon) containerUnpause(container *container.Container) error {
-	container.Lock()
-	defer container.Unlock()
-
 	// We cannot unpause the container which is not paused
 	if !container.Paused {
 		return fmt.Errorf("Container %s is not paused", container.ID)

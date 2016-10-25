@@ -6,6 +6,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,6 +45,7 @@ import (
 	"github.com/docker/docker/pkg/fileutils"
 	"github.com/docker/docker/pkg/graphdb"
 	"github.com/docker/docker/pkg/idtools"
+	"github.com/docker/docker/pkg/locker"
 	"github.com/docker/docker/pkg/plugingetter"
 	"github.com/docker/docker/pkg/progress"
 	"github.com/docker/docker/pkg/registrar"
@@ -51,7 +53,6 @@ import (
 	"github.com/docker/docker/pkg/streamformatter"
 	"github.com/docker/docker/pkg/sysinfo"
 	"github.com/docker/docker/pkg/system"
-	"github.com/docker/docker/pkg/truncindex"
 	pluginstore "github.com/docker/docker/plugin/store"
 	"github.com/docker/docker/reference"
 	"github.com/docker/docker/registry"
@@ -88,7 +89,6 @@ type Daemon struct {
 	uploadManager             *xfer.LayerUploadManager
 	distributionMetadataStore dmetadata.Store
 	trustKey                  libtrust.PrivateKey
-	idIndex                   *truncindex.TruncIndex
 	configStore               *Config
 	statsCollector            *statsCollector
 	defaultLogConfig          containertypes.LogConfig
@@ -115,6 +115,11 @@ type Daemon struct {
 
 	seccompProfile     []byte
 	seccompProfilePath string
+
+	// sateLock is used to synchronize actions which change the state of an object.
+	// Typically this is used for container actions to ensure that, for instnace,
+	// a container cannot be both started and stopped simultaneously.
+	stateLock *locker.Locker
 }
 
 // HasExperimental returns whether the experimental features of the daemon are enabled or not
@@ -649,7 +654,6 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	d.referenceStore = referenceStore
 	d.distributionMetadataStore = distributionMetadataStore
 	d.trustKey = trustKey
-	d.idIndex = truncindex.NewTruncIndex([]string{})
 	d.statsCollector = d.newStatsCollector(1 * time.Second)
 	d.defaultLogConfig = containertypes.LogConfig{
 		Type:   config.LogConfig.Type,
@@ -666,6 +670,7 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 	d.nameIndex = registrar.NewRegistrar()
 	d.linkIndex = newLinkIndex()
 	d.containerdRemote = containerdRemote
+	d.stateLock = locker.New()
 
 	go d.execCommandGC()
 
@@ -706,6 +711,8 @@ func NewDaemon(config *Config, registryService registry.Service, containerdRemot
 
 func (daemon *Daemon) shutdownContainer(c *container.Container) error {
 	stopTimeout := c.StopTimeout()
+	ctx := context.Background()
+
 	// TODO(windows): Handle docker restart with paused containers
 	if c.IsPaused() {
 		// To terminate a process in freezer cgroup, we should send
@@ -722,8 +729,11 @@ func (daemon *Daemon) shutdownContainer(c *container.Container) error {
 		if err := daemon.containerUnpause(c); err != nil {
 			return fmt.Errorf("Failed to unpause container %s with error: %v", c.ID, err)
 		}
-		if _, err := c.WaitStop(time.Duration(stopTimeout) * time.Second); err != nil {
-			logrus.Debugf("container %s failed to exit in %d second of SIGTERM, sending SIGKILL to force", c.ID, stopTimeout)
+
+		withTimeout, cancel := context.WithTimeout(ctx, time.Duration(stopTimeout)*time.Second)
+		defer cancel()
+		if _, err := daemon.containers.WaitStop(withTimeout, c); err != nil {
+			logrus.Debugf("container %s failed to exit in %d seconds of SIGTERM, sending SIGKILL to force", c.ID, stopTimeout)
 			sig, ok := signal.SignalMap["KILL"]
 			if !ok {
 				return fmt.Errorf("System does not support SIGKILL")
@@ -731,7 +741,7 @@ func (daemon *Daemon) shutdownContainer(c *container.Container) error {
 			if err := daemon.kill(c, int(sig)); err != nil {
 				logrus.Errorf("Failed to SIGKILL container %s", c.ID)
 			}
-			c.WaitStop(-1 * time.Second)
+			daemon.containers.WaitStop(ctx, c)
 			return err
 		}
 	}
@@ -740,7 +750,7 @@ func (daemon *Daemon) shutdownContainer(c *container.Container) error {
 		return fmt.Errorf("Failed to stop container %s with error: %v", c.ID, err)
 	}
 
-	c.WaitStop(-1 * time.Second)
+	daemon.containers.WaitStop(ctx, c)
 	return nil
 }
 

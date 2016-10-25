@@ -3,7 +3,7 @@ package store
 import (
 	"strings"
 
-	"src/github.com/pkg/errors"
+	"github.com/pkg/errors"
 
 	"github.com/docker/docker/container"
 	memdb "github.com/hashicorp/go-memdb"
@@ -128,6 +128,7 @@ func UpdateContainer(tx Tx, c *container.Container) error {
 			return ErrNameConflict
 		}
 	}
+
 	update := containerEntry{c}
 	err := tx.update(tableContainer, update)
 	return errors.Wrap(err, "error saving container update to store")
@@ -139,8 +140,9 @@ func DeleteContainer(tx Tx, id string) error {
 	return errors.Wrap(tx.delete(tableContainer, id), "error deleting container from store")
 }
 
-// GetContainer looks up a container by the passed in ID or name.
-// Returns nil if the container does not exist in the store.
+// GetContainer looks up a container by the passed in ID or name (or prefix).
+// Returns nil if the container does not exist in the store or if more than 1
+// match was found based on prefix.
 func GetContainer(tx ReadTx, id string) *container.Container {
 	c := tx.get(tableContainer, id)
 	if c != nil {
@@ -148,23 +150,34 @@ func GetContainer(tx ReadTx, id string) *container.Container {
 	}
 
 	name := id
-	// TODO(@cpuguy83): this usage of `/` in front of names should be cleaned up
-	// in daemon
 	if name[0] != '/' {
 		name = "/" + name
 	}
 	c = tx.lookup(tableContainer, indexName, name)
 	if c != nil {
-		return c.(containerEntry).Container
+		// Make sure to `Copy()` here since lookup() doesn't copy
+		return c.Copy().(containerEntry).Container
 	}
-	c = tx.lookup(tableContainer, indexID+prefix, id)
-	if c != nil {
-		return c.(containerEntry).Container
+
+	// fallback to find by prefix
+	ls := make(map[string]Object)
+	appender := func(o Object) {
+		ls[o.ID()] = o
 	}
-	c = tx.lookup(tableContainer, indexName+prefix, name)
-	if c != nil {
-		return c.(containerEntry).Container
+
+	err := tx.find(tableContainer, Or(ByNamePrefix(name), ByIDPrefix(id)), func(By) error { return nil }, appender)
+	if err != nil {
+		return nil
 	}
+
+	// Should only return here if we have a single entry, otherwise it'll give
+	// ambiguous results
+	if len(ls) == 1 {
+		for _, o := range ls {
+			return o.(containerEntry).Container
+		}
+	}
+
 	return nil
 }
 

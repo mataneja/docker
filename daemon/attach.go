@@ -3,7 +3,6 @@ package daemon
 import (
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/api/errors"
@@ -12,10 +11,11 @@ import (
 	"github.com/docker/docker/daemon/logger"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/docker/pkg/term"
+	"golang.org/x/net/context"
 )
 
 // ContainerAttach attaches to logs according to the config passed in. See ContainerAttachConfig.
-func (daemon *Daemon) ContainerAttach(prefixOrName string, c *backend.ContainerAttachConfig) error {
+func (daemon *Daemon) ContainerAttach(ctx context.Context, prefixOrName string, c *backend.ContainerAttachConfig) error {
 	keys := []byte{}
 	var err error
 	if c.DetachKeys != "" {
@@ -58,32 +58,37 @@ func (daemon *Daemon) ContainerAttach(prefixOrName string, c *backend.ContainerA
 		stderr = errStream
 	}
 
-	if err := daemon.containerAttach(container, stdin, stdout, stderr, c.Logs, c.Stream, keys); err != nil {
+	if err := daemon.containerAttach(ctx, container, stdin, stdout, stderr, c.Logs, c.Stream, keys); err != nil {
 		fmt.Fprintf(outStream, "Error attaching: %s\n", err)
 	}
 	return nil
 }
 
 // ContainerAttachRaw attaches the provided streams to the container's stdio
-func (daemon *Daemon) ContainerAttachRaw(prefixOrName string, stdin io.ReadCloser, stdout, stderr io.Writer, stream bool) error {
+func (daemon *Daemon) ContainerAttachRaw(ctx context.Context, prefixOrName string, stdin io.ReadCloser, stdout, stderr io.Writer, stream bool) error {
 	container, err := daemon.GetContainer(prefixOrName)
 	if err != nil {
 		return err
 	}
-	return daemon.containerAttach(container, stdin, stdout, stderr, false, stream, nil)
+	return daemon.containerAttach(ctx, container, stdin, stdout, stderr, false, stream, nil)
 }
 
-func (daemon *Daemon) containerAttach(c *container.Container, stdin io.ReadCloser, stdout, stderr io.Writer, logs, stream bool, keys []byte) error {
+func (daemon *Daemon) containerAttach(ctx context.Context, c *container.Container, stdin io.ReadCloser, stdout, stderr io.Writer, logs, stream bool, keys []byte) error {
 	if logs {
-		logDriver, err := daemon.getLogger(c)
+		logDriver, createdLogger, err := daemon.getLogger(c)
 		if err != nil {
 			return err
 		}
+		if createdLogger {
+			defer logDriver.Close()
+		}
+
 		cLog, ok := logDriver.(logger.LogReader)
 		if !ok {
 			return logger.ErrReadLogsNotSupported
 		}
 		logs := cLog.ReadLogs(logger.ReadConfig{Tail: -1})
+		defer logs.Close()
 
 	LogLoop:
 		for {
@@ -120,15 +125,16 @@ func (daemon *Daemon) containerAttach(c *container.Container, stdin io.ReadClose
 			stdinPipe = r
 		}
 
-		waitChan := make(chan struct{})
+		var cancel func()
 		if c.Config.StdinOnce && !c.Config.Tty {
+			ctx, cancel = context.WithCancel(ctx)
 			go func() {
-				c.WaitStop(-1 * time.Second)
-				close(waitChan)
+				daemon.containers.WaitAttachStop(ctx, c)
+				cancel()
 			}()
 		}
 
-		err := <-c.Attach(stdinPipe, stdout, stderr, keys)
+		err := <-c.Attach(ctx, stdinPipe, stdout, stderr, keys)
 		if err != nil {
 			if _, ok := err.(container.DetachError); ok {
 				daemon.LogContainerEvent(c, "detach")
@@ -140,7 +146,7 @@ func (daemon *Daemon) containerAttach(c *container.Container, stdin io.ReadClose
 		// If we are in stdinonce mode, wait for the process to end
 		// otherwise, simply return
 		if c.Config.StdinOnce && !c.Config.Tty {
-			<-waitChan
+			<-ctx.Done()
 		}
 	}
 	return nil

@@ -64,8 +64,11 @@ func (DetachError) Error() string {
 
 // CommonContainer holds the fields for a container which are
 // applicable across all platforms supported by the daemon.
+//
+// TODO(cpuguy83): different platforms have their own fields, this is problematic
+// for code generation for the deep copy function.
+// Currently these fields are all simple fields that do not require any extra copying.
 type CommonContainer struct {
-	StreamConfig *stream.Config
 	// embed for Container to support states directly.
 	*State          `json:"State"` // Needed for remote api version <= 1.11
 	Root            string         `json:"-"` // Path to the "home" of the container, including metadata.
@@ -91,11 +94,6 @@ type CommonContainer struct {
 	MountPoints            map[string]*volume.MountPoint
 	HostConfig             *containertypes.HostConfig        `json:"-"` // do not serialize the host config in the json, otherwise we'll make the container unportable
 	Secrets                []*containertypes.ContainerSecret `json:"-"` // do not serialize
-	// logDriver for closing
-	LogDriver      logger.Logger  `json:"-"`
-	LogCopier      *logger.Copier `json:"-"`
-	restartManager restartmanager.RestartManager
-	attachContext  *attachContext
 
 	// CurrentVersion is used by the container store to ensure no conflicts between
 	// two calls to update a container
@@ -107,26 +105,16 @@ type CommonContainer struct {
 // NewBaseContainer creates a new container with its
 // basic configuration.
 func NewBaseContainer(id, root string) *Container {
-	return &Container{
+	c := &Container{
 		CommonContainer: CommonContainer{
-			ID:            id,
-			State:         NewState(),
-			Root:          root,
-			MountPoints:   make(map[string]*volume.MountPoint),
-			StreamConfig:  stream.NewConfig(),
-			attachContext: &attachContext{},
+			ID:          id,
+			State:       NewState(),
+			Root:        root,
+			MountPoints: make(map[string]*volume.MountPoint),
 		},
 	}
-}
-
-// Copy creates a copy of the container object
-func (container *Container) Copy() *Container {
-	var copy Container
-	copy = *container
-	if container.State != nil {
-		copy.State = container.State.copy()
-	}
-	return &copy
+	AddRunState(c, newRunState())
+	return c
 }
 
 // FromDisk loads the container configuration stored in the host.
@@ -176,14 +164,6 @@ func (container *Container) ToDisk() error {
 	}
 
 	return container.WriteHostConfig()
-}
-
-// ToDiskLocking saves the container configuration on disk in a thread safe way.
-func (container *Container) ToDiskLocking() error {
-	container.Lock()
-	err := container.ToDisk()
-	container.Unlock()
-	return err
 }
 
 // readHostConfig reads the host configuration from disk for the container.
@@ -313,7 +293,8 @@ func (container *Container) GetRootResourcePath(path string) (string, error) {
 // ExitOnNext signals to the monitor that it should not restart the container
 // after we send the kill signal.
 func (container *Container) ExitOnNext() {
-	container.RestartManager().Cancel()
+	s := GetRunState(container)
+	s.cancelRestartManager()
 }
 
 // HostConfigPath returns the path to the container's JSON hostconfig
@@ -379,9 +360,8 @@ func (container *Container) GetMountLabel() string {
 
 // Attach connects to the container's TTY, delegating to standard
 // streams or websockets depending on the configuration.
-func (container *Container) Attach(stdin io.ReadCloser, stdout io.Writer, stderr io.Writer, keys []byte) chan error {
-	ctx := container.InitAttachContext()
-	return AttachStreams(ctx, container.StreamConfig, container.Config.OpenStdin, container.Config.StdinOnce, container.Config.Tty, stdin, stdout, stderr, keys)
+func (container *Container) Attach(attachCtx context.Context, stdin io.ReadCloser, stdout io.Writer, stderr io.Writer, keys []byte) chan error {
+	return AttachStreams(attachCtx, container.Streams(), container.Config.OpenStdin, container.Config.StdinOnce, container.Config.Tty, stdin, stdout, stderr, keys)
 }
 
 // AttachStreams connects streams to a TTY.
@@ -637,8 +617,6 @@ func (container *Container) StopTimeout() int {
 // See https://github.com/docker/docker/pull/17779
 // for a more detailed explanation on why we don't want that.
 func (container *Container) InitDNSHostConfig() {
-	container.Lock()
-	defer container.Unlock()
 	if container.HostConfig.DNS == nil {
 		container.HostConfig.DNS = make([]string, 0)
 	}
@@ -1005,104 +983,112 @@ func (container *Container) FullHostname() string {
 
 // RestartManager returns the current restartmanager instance connected to container.
 func (container *Container) RestartManager() restartmanager.RestartManager {
-	if container.restartManager == nil {
-		container.restartManager = restartmanager.New(container.HostConfig.RestartPolicy, container.RestartCount)
+	s := GetRunState(container)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.restartManager == nil {
+		s.restartManager = restartmanager.New(container.HostConfig.RestartPolicy, container.RestartCount)
 	}
-	return container.restartManager
+
+	return s.restartManager
 }
 
-// ResetRestartManager initializes new restartmanager based on container config
-func (container *Container) ResetRestartManager(resetCount bool) {
-	if container.restartManager != nil {
-		container.restartManager.Cancel()
-	}
-	if resetCount {
-		container.RestartCount = 0
-	}
-	container.restartManager = nil
+// streams is used to get the container's stream config
+func (container *Container) Streams() *stream.Config {
+	s := GetRunState(container)
+	s.mu.Lock()
+	streams := s.streams
+	s.mu.Unlock()
+	return streams
 }
 
-type attachContext struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	mu     sync.Mutex
+// NewInputPipes proxies to the underlying StreamConfig `NewInputPipes()`
+// It creates new pipes for the container's stdin
+func (container *Container) NewInputPipes() {
+	container.Streams().NewInputPipes()
 }
 
-// InitAttachContext initializes or returns existing context for attach calls to
-// track container liveness.
-func (container *Container) InitAttachContext() context.Context {
-	container.attachContext.mu.Lock()
-	defer container.attachContext.mu.Unlock()
-	if container.attachContext.ctx == nil {
-		container.attachContext.ctx, container.attachContext.cancel = context.WithCancel(context.Background())
-	}
-	return container.attachContext.ctx
+// NewNopInputPipe proxies to the underlying StreamConfig `NewNopInputPipes()`
+// It creates new a new pipe that will silently drop data sent to the container's stdin
+func (container *Container) NewNopInputPipe() {
+	container.Streams().NewNopInputPipe()
 }
 
-// CancelAttachContext cancels attach context. All attach calls should detach
-// after this call.
-func (container *Container) CancelAttachContext() {
-	container.attachContext.mu.Lock()
-	if container.attachContext.ctx != nil {
-		container.attachContext.cancel()
-		container.attachContext.ctx = nil
-	}
-	container.attachContext.mu.Unlock()
+// LogDriver gets the configured LogDriver if it is set
+func (container *Container) LogDriver() logger.Logger {
+	s := GetRunState(container)
+	s.mu.Lock()
+	l := s.logDriver
+	s.mu.Unlock()
+	return l
 }
 
-func (container *Container) startLogging() error {
-	if container.HostConfig.LogConfig.Type == "none" {
-		return nil // do not start logging routines
+func (container *Container) ConfigureLogging() (logger.Logger, *logger.Copier, error) {
+	s := GetRunState(container)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.logDriver != nil {
+		return s.logDriver, s.logCopier, nil
 	}
 
 	l, err := container.StartLogger(container.HostConfig.LogConfig)
 	if err != nil {
-		return fmt.Errorf("Failed to initialize logging driver: %v", err)
+		return nil, nil, err
 	}
-
-	copier := logger.NewCopier(map[string]io.Reader{"stdout": container.StdoutPipe(), "stderr": container.StderrPipe()}, l)
-	container.LogCopier = copier
-	copier.Run()
-	container.LogDriver = l
 
 	// set LogPath field only for json-file logdriver
 	if jl, ok := l.(*jsonfilelog.JSONFileLogger); ok {
 		container.LogPath = jl.LogPath()
 	}
 
-	return nil
+	copier := logger.NewCopier(map[string]io.Reader{"stdout": s.streams.StdoutPipe(), "stderr": s.streams.StderrPipe()}, l)
+	copier.Run()
+
+	s.logDriver = l
+	s.logCopier = copier
+	return l, copier, nil
 }
 
-// StdinPipe gets the stdin stream of the container
-func (container *Container) StdinPipe() io.WriteCloser {
-	return container.StreamConfig.StdinPipe()
+// ResetRestartManager initializes new restartmanager based on container config
+func (container *Container) ResetRestartManager(resetCount bool) {
+	s := GetRunState(container)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.restartManager != nil {
+		s.restartManager.Cancel()
+	}
+	if resetCount {
+		container.RestartCount = 0
+	}
+	s.restartManager = nil
 }
 
 // StdoutPipe gets the stdout stream of the container
 func (container *Container) StdoutPipe() io.ReadCloser {
-	return container.StreamConfig.StdoutPipe()
+	s := GetRunState(container)
+	return s.streams.StdoutPipe()
 }
 
 // StderrPipe gets the stderr stream of the container
 func (container *Container) StderrPipe() io.ReadCloser {
-	return container.StreamConfig.StderrPipe()
-}
-
-// CloseStreams closes the container's stdio streams
-func (container *Container) CloseStreams() error {
-	return container.StreamConfig.CloseStreams()
+	s := GetRunState(container)
+	return s.streams.StderrPipe()
 }
 
 // InitializeStdio is called by libcontainerd to connect the stdio.
 func (container *Container) InitializeStdio(iop libcontainerd.IOPipe) error {
-	if err := container.startLogging(); err != nil {
-		container.Reset(false)
+	if _, _, err := container.ConfigureLogging(); err != nil {
+		container.Reset()
 		return err
 	}
 
-	container.StreamConfig.CopyToPipe(iop)
+	streams := container.Streams()
+	streams.CopyToPipe(iop)
 
-	if container.StreamConfig.Stdin() == nil && !container.Config.Tty {
+	if container.Streams().Stdin() == nil && !container.Config.Tty {
 		if iop.Stdin != nil {
 			if err := iop.Stdin.Close(); err != nil {
 				logrus.Warnf("error closing stdin: %+v", err)

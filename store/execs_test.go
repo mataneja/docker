@@ -17,7 +17,8 @@ func TestStoreExec(t *testing.T) {
 		EventExecUpdate{Config: e, Checks: []ExecCheckFunc{MatchExecID}},
 		EventExecDelete{Config: e, Checks: []ExecCheckFunc{MatchExecID}},
 	}
-	chEvent := store.SubscribeEvents(topics...)
+	chEvent, cancel := store.SubscribeEvents(topics...)
+	defer cancel()
 
 	err := store.Update(func(tx Tx) error {
 		return CreateExec(tx, e)

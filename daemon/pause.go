@@ -23,9 +23,6 @@ func (daemon *Daemon) ContainerPause(name string) error {
 // containerPause pauses the container execution without stopping the process.
 // The execution can be resumed by calling containerUnpause.
 func (daemon *Daemon) containerPause(container *container.Container) error {
-	container.Lock()
-	defer container.Unlock()
-
 	// We cannot Pause the container which is not running
 	if !container.Running {
 		return errNotRunning{container.ID}

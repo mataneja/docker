@@ -26,17 +26,8 @@ func (daemon *Daemon) ContainerRm(name string, config *types.ContainerRmConfig) 
 		return err
 	}
 
-	// Container state RemovalInProgress should be used to avoid races.
-	if inProgress := container.SetRemovalInProgress(); inProgress {
-		err := fmt.Errorf("removal of container %s is already in progress", name)
-		return errors.NewBadRequestError(err)
-	}
-	defer container.ResetRemovalInProgress()
-
-	// check if container wasn't deregistered by previous rm since Get
-	if c := daemon.containers.Get(container.ID); c == nil {
-		return nil
-	}
+	daemon.stateLock.Lock(container.ID)
+	defer daemon.stateLock.Unlock(container.ID)
 
 	if config.RemoveLink {
 		return daemon.rmLink(container, name)
@@ -44,7 +35,6 @@ func (daemon *Daemon) ContainerRm(name string, config *types.ContainerRmConfig) 
 
 	err = daemon.cleanupContainer(container, config.ForceRemove, config.RemoveVolume)
 	containerActions.WithValues("delete").UpdateSince(start)
-
 	return err
 }
 
@@ -76,32 +66,43 @@ func (daemon *Daemon) rmLink(container *container.Container, name string) error 
 
 // cleanupContainer unregisters a container from the daemon, stops stats
 // collection and cleanly removes contents and metadata from the filesystem.
-func (daemon *Daemon) cleanupContainer(container *container.Container, forceRemove, removeVolume bool) (err error) {
-	if container.IsRunning() {
+func (daemon *Daemon) cleanupContainer(c *container.Container, forceRemove, removeVolume bool) (err error) {
+	// Container state RemovalInProgress should be used to avoid races.
+	if inProgress := c.SetRemovalInProgress(); inProgress {
+		err := fmt.Errorf("removal of container %s is already in progress", c.Name)
+		return errors.NewBadRequestError(err)
+	}
+
+	if c.IsRunning() {
 		if !forceRemove {
-			err := fmt.Errorf("You cannot remove a running container %s. Stop the container before attempting removal or use -f", container.ID)
+			err := fmt.Errorf("You cannot remove a running container %s. Stop the container before attempting removal or use -f", c.ID)
 			return errors.NewRequestConflictError(err)
 		}
-		if err := daemon.Kill(container); err != nil {
-			return fmt.Errorf("Could not kill running container %s, cannot remove - %v", container.ID, err)
+		if err := daemon.Kill(c); err != nil {
+			return fmt.Errorf("Could not kill running container %s, cannot remove - %v", c.ID, err)
 		}
+		// Make sure we have the most recent container updates
+		// TODO(@cpuguy83): this is a race condition since the container monitor may
+		// itself update the container in another goroutine but we really don't know
+		// when this will happen
+		c = daemon.containers.Get(c.ID)
 	}
 
 	// stop collection of stats for the container regardless
 	// if stats are currently getting collected.
-	daemon.statsCollector.stopCollection(container)
+	daemon.statsCollector.stopCollection(c)
 
-	if err = daemon.containerStop(container, 3); err != nil {
+	if err = daemon.containerStop(c, 3); err != nil {
 		return err
 	}
 
 	// Mark container dead. We don't want anybody to be restarting it.
-	container.SetDead()
+	c.SetDead()
 
 	// Save container state to disk. So that if error happens before
 	// container meta file got removed from disk, then a restart of
 	// docker should not make a dead container alive.
-	if err := daemon.containers.Commit(container); err != nil {
+	if err := daemon.containers.Commit(c); err != nil {
 		logrus.Errorf("Error saving dying container to disk: %+v", err)
 	}
 
@@ -109,29 +110,32 @@ func (daemon *Daemon) cleanupContainer(container *container.Container, forceRemo
 	// indexes even if removal failed.
 	defer func() {
 		if err == nil || forceRemove {
-			daemon.nameIndex.Delete(container.ID)
-			daemon.linkIndex.delete(container)
-			selinuxFreeLxcContexts(container.ProcessLabel)
-			daemon.idIndex.Delete(container.ID)
-			daemon.containers.Delete(container.ID)
-			if e := daemon.removeMountPoints(container, removeVolume); e != nil {
+			daemon.nameIndex.Delete(c.ID)
+			daemon.linkIndex.delete(c)
+			selinuxFreeLxcContexts(c.ProcessLabel)
+			daemon.containers.Delete(c.ID)
+			if e := daemon.removeMountPoints(c, removeVolume); e != nil {
 				logrus.Error(e)
 			}
-			daemon.LogContainerEvent(container, "destroy")
+			container.RemoveRunState(c)
+			daemon.LogContainerEvent(c, "destroy")
+		} else {
+			c.ResetRemovalInProgress()
+			daemon.containers.Commit(c)
 		}
 	}()
 
-	if err = os.RemoveAll(container.Root); err != nil {
-		return fmt.Errorf("Unable to remove filesystem for %v: %v", container.ID, err)
+	if err = os.RemoveAll(c.Root); err != nil {
+		return fmt.Errorf("Unable to remove filesystem for %v: %v", c.ID, err)
 	}
 
 	// When container creation fails and `RWLayer` has not been created yet, we
 	// do not call `ReleaseRWLayer`
-	if container.RWLayer != nil {
-		metadata, err := daemon.layerStore.ReleaseRWLayer(container.RWLayer)
+	if c.RWLayer != nil {
+		metadata, err := daemon.layerStore.ReleaseRWLayer(c.RWLayer)
 		layer.LogReleaseMetadata(metadata)
 		if err != nil && err != layer.ErrMountDoesNotExist {
-			return fmt.Errorf("Driver %s failed to remove root filesystem %s: %s", daemon.GraphDriverName(), container.ID, err)
+			return fmt.Errorf("Driver %s failed to remove root filesystem %s: %s", daemon.GraphDriverName(), c.ID, err)
 		}
 	}
 

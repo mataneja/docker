@@ -31,6 +31,8 @@ func (daemon *Daemon) postRunProcessing(container *container.Container, e libcon
 			return err
 		}
 
+		defer daemon.containers.Commit(container)
+
 		if copts != nil {
 			newOpts = append(newOpts, copts...)
 		}

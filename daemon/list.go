@@ -108,7 +108,6 @@ func (daemon *Daemon) Containers(config *types.ContainerListOptions) ([]*types.C
 }
 
 func (daemon *Daemon) filterByNameIDMatches(ctx *listContext) []*container.Container {
-	idSearch := false
 	names := ctx.filters.Get("name")
 	ids := ctx.filters.Get("id")
 	if len(names)+len(ids) == 0 {
@@ -118,40 +117,9 @@ func (daemon *Daemon) filterByNameIDMatches(ctx *listContext) []*container.Conta
 		return daemon.List()
 	}
 
-	// idSearch will determine if we limit name matching to the IDs
-	// matched from any IDs which were specified as filters
-	if len(ids) > 0 {
-		idSearch = true
-	}
-
-	matches := make(map[string]bool)
-	// find ID matches; errors represent "not found" and can be ignored
-	for _, id := range ids {
-		if fullID, err := daemon.idIndex.Get(id); err == nil {
-			matches[fullID] = true
-		}
-	}
-
-	// look for name matches; if ID filtering was used, then limit the
-	// search space to the matches map only; errors represent "not found"
-	// and can be ignored
-	if len(names) > 0 {
-		for id, idNames := range ctx.names {
-			// if ID filters were used and no matches on that ID were
-			// found, continue to next ID in the list
-			if idSearch && !matches[id] {
-				continue
-			}
-			for _, eachName := range idNames {
-				if ctx.filters.Match("name", eachName) {
-					matches[id] = true
-				}
-			}
-		}
-	}
-
-	cntrs := make([]*container.Container, 0, len(matches))
-	for id := range matches {
+	criteria := append(ids, names...)
+	cntrs := make([]*container.Container, 0, len(criteria))
+	for _, id := range criteria {
 		if c := daemon.containers.Get(id); c != nil {
 			cntrs = append(cntrs, c)
 		}
@@ -199,9 +167,6 @@ func (daemon *Daemon) reduceContainers(config *types.ContainerListOptions, reduc
 
 // reducePsContainer is the basic representation for a container as expected by the ps command.
 func (daemon *Daemon) reducePsContainer(container *container.Container, ctx *listContext, reducer containerReducer) (*types.Container, error) {
-	container.Lock()
-	defer container.Unlock()
-
 	// filter containers to return
 	action := includeContainerInList(container, ctx)
 	switch action {

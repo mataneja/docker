@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"runtime"
 	"strings"
@@ -56,9 +57,6 @@ func (daemon *Daemon) ContainerKill(name string, sig uint64) error {
 // underlying kill command.
 func (daemon *Daemon) killWithSignal(container *container.Container, sig int) error {
 	logrus.Debugf("Sending kill signal %d to container %s", sig, container.ID)
-	container.Lock()
-	defer container.Unlock()
-
 	// We could unpause the container for them rather than returning this error
 	if container.Paused {
 		return fmt.Errorf("Container %s is paused. Unpause the container before stopping", container.ID)
@@ -115,6 +113,8 @@ func (daemon *Daemon) Kill(container *container.Container) error {
 		return errNotRunning{container.ID}
 	}
 
+	ctx := context.Background()
+
 	// 1. Send SIGKILL
 	if err := daemon.killPossiblyDeadProcess(container, int(syscall.SIGKILL)); err != nil {
 		// While normally we might "return err" here we're not going to
@@ -130,21 +130,23 @@ func (daemon *Daemon) Kill(container *container.Container) error {
 		if isErrNoSuchProcess(err) {
 			return nil
 		}
-
-		if _, err2 := container.WaitStop(2 * time.Second); err2 != nil {
+		withTimeout, cancel := context.WithTimeout(ctx, 2*time.Second)
+		if _, err2 := daemon.containers.WaitStop(withTimeout, container); err2 != nil {
+			cancel()
 			return err
 		}
+		cancel()
 	}
 
 	// 2. Wait for the process to die, in last resort, try to kill the process directly
-	if err := killProcessDirectly(container); err != nil {
+	if err := daemon.killProcessDirectly(container); err != nil {
 		if isErrNoSuchProcess(err) {
 			return nil
 		}
 		return err
 	}
 
-	container.WaitStop(-1 * time.Second)
+	daemon.containers.WaitStop(ctx, container)
 	return nil
 }
 

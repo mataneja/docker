@@ -20,8 +20,6 @@ func (daemon *Daemon) ContainerChanges(name string) ([]archive.Change, error) {
 		return nil, errors.New("Windows does not support diff of a running container")
 	}
 
-	container.Lock()
-	defer container.Unlock()
 	c, err := container.RWLayer.Changes()
 	if err != nil {
 		return nil, err

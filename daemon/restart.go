@@ -18,6 +18,9 @@ func (daemon *Daemon) ContainerRestart(name string, seconds *int) error {
 	if err != nil {
 		return err
 	}
+	daemon.stateLock.Lock(container.ID)
+	defer daemon.stateLock.Unlock(container.ID)
+
 	if seconds == nil {
 		stopTimeout := container.StopTimeout()
 		seconds = &stopTimeout

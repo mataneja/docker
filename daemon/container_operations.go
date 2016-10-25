@@ -23,6 +23,7 @@ import (
 	"github.com/docker/libnetwork/netlabel"
 	"github.com/docker/libnetwork/options"
 	"github.com/docker/libnetwork/types"
+	perrors "github.com/pkg/errors"
 )
 
 var (
@@ -836,8 +837,6 @@ func (daemon *Daemon) disconnectFromNetwork(container *container.Container, n li
 }
 
 func (daemon *Daemon) initializeNetworking(container *container.Container) error {
-	var err error
-
 	if container.HostConfig.NetworkMode.IsContainer() {
 		// we need to get the hosts files from the container to join
 		nc, err := daemon.getNetworkedContainer(container.ID, container.HostConfig.NetworkMode.ConnectedContainer())
@@ -851,6 +850,7 @@ func (daemon *Daemon) initializeNetworking(container *container.Container) error
 	}
 
 	if container.HostConfig.NetworkMode.IsHost() {
+		var err error
 		container.Config.Hostname, err = os.Hostname()
 		if err != nil {
 			return err
@@ -861,7 +861,10 @@ func (daemon *Daemon) initializeNetworking(container *container.Container) error
 		return err
 	}
 
-	return container.BuildHostnameFile()
+	if err := container.BuildHostnameFile(); err != nil {
+		return err
+	}
+	return perrors.Wrapf(daemon.containers.Commit(container), "error saving container network settings")
 }
 
 func (daemon *Daemon) getNetworkedContainer(containerID, connectedContainerID string) (*container.Container, error) {
@@ -972,7 +975,7 @@ func (daemon *Daemon) ConnectToNetwork(container *container.Container, idOrName 
 		}
 	}
 	err := daemon.containers.Commit(container)
-	return errors.Wrap(err, "error while saving container state")
+	return perrors.Wrap(err, "error while saving container state")
 }
 
 // DisconnectFromNetwork disconnects container from network n.
@@ -1006,7 +1009,7 @@ func (daemon *Daemon) DisconnectFromNetwork(container *container.Container, netw
 	}
 
 	if err := daemon.containers.Commit(container); err != nil {
-		return errors.Wrap(err, "error while saving container state")
+		return perrors.Wrap(err, "error while saving container state")
 	}
 	if n != nil {
 		attributes := map[string]string{

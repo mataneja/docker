@@ -3,6 +3,8 @@ package daemon
 import (
 	"time"
 
+	"github.com/pkg/errors"
+
 	"golang.org/x/net/context"
 )
 
@@ -17,7 +19,17 @@ func (daemon *Daemon) ContainerWait(name string, timeout time.Duration) (int, er
 		return -1, err
 	}
 
-	return container.WaitStop(timeout)
+	ctx := context.Background()
+	if timeout > 0 {
+		var cancel func()
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	updated, err := daemon.containers.WaitStop(ctx, container)
+	if err != nil {
+		return -1, errors.Wrap(err, "timeout waiting for container to stop")
+	}
+	return updated.ExitCodeValue, nil
 }
 
 // ContainerWaitWithContext returns a channel where exit code is sent
@@ -28,5 +40,6 @@ func (daemon *Daemon) ContainerWaitWithContext(ctx context.Context, name string)
 		return err
 	}
 
-	return container.WaitWithContext(ctx)
+	_, err = daemon.containers.WaitStop(ctx, container)
+	return err
 }

@@ -1,5 +1,7 @@
 package container
 
+import "context"
+
 // StoreFilter defines a function to filter
 // container in the store.
 type StoreFilter func(*Container) bool
@@ -29,4 +31,10 @@ type Store interface {
 	// There is no need to call commit when using ApplyAll, this function is only
 	// for syncing changes to an individual container with the container store
 	Commit(*Container) error
+	// WaitStop waits for the passed in container to stop and returns the updated container
+	// TODO(cpuguy83): this feels a bit weird here.
+	WaitStop(context.Context, *Container) (*Container, error)
+	// WaitAttachStop waits for the passed in container to stop and returns the updated container
+	// TODO(cpuguy83): this feels a bit weird here.
+	WaitAttachStop(context.Context, *Container) (*Container, error)
 }

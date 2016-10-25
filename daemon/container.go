@@ -14,7 +14,6 @@ import (
 	"github.com/docker/docker/image"
 	"github.com/docker/docker/pkg/signal"
 	"github.com/docker/docker/pkg/system"
-	"github.com/docker/docker/pkg/truncindex"
 	"github.com/docker/docker/runconfig/opts"
 	"github.com/docker/go-connections/nat"
 	"github.com/pkg/errors"
@@ -32,27 +31,11 @@ func (daemon *Daemon) GetContainer(prefixOrName string) (*container.Container, e
 		return nil, dockererrors.NewBadRequestError(fmt.Errorf("No container name or ID supplied"))
 	}
 
-	if containerByID := daemon.containers.Get(prefixOrName); containerByID != nil {
-		// prefix is an exact match to a full container ID
-		return containerByID, nil
+	c := daemon.containers.Get(prefixOrName)
+	if c != nil {
+		return c, nil
 	}
-
-	// GetByName will match only an exact name provided; we ignore errors
-	if containerByName, _ := daemon.GetByName(prefixOrName); containerByName != nil {
-		// prefix is an exact match to a full container Name
-		return containerByName, nil
-	}
-
-	containerID, indexError := daemon.idIndex.Get(prefixOrName)
-	if indexError != nil {
-		// When truncindex defines an error type, use that instead
-		if indexError == truncindex.ErrNotExist {
-			err := fmt.Errorf("No such container: %s", prefixOrName)
-			return nil, dockererrors.NewRequestNotFoundError(err)
-		}
-		return nil, indexError
-	}
-	return daemon.containers.Get(containerID), nil
+	return nil, dockererrors.NewRequestNotFoundError(fmt.Errorf("no such container: %s", prefixOrName))
 }
 
 // Exists returns a true if a container of the specified ID or name exists,
@@ -90,19 +73,12 @@ func (daemon *Daemon) load(id string) (*container.Container, error) {
 
 // Register makes a container object usable by the daemon as <container.ID>
 func (daemon *Daemon) Register(c *container.Container) error {
-	// Attach to stdout and stderr
 	if c.Config.OpenStdin {
-		c.StreamConfig.NewInputPipes()
+		c.Streams().NewInputPipes()
 	} else {
-		c.StreamConfig.NewNopInputPipe()
+		c.Streams().NewNopInputPipe()
 	}
-
-	if err := daemon.containers.Add(c.ID, c); err != nil {
-		return errors.Wrap(err, "could not save container to store")
-	}
-	daemon.idIndex.Add(c.ID)
-
-	return nil
+	return errors.Wrap(daemon.containers.Add(c.ID, c), "could not save container to store")
 }
 
 func (daemon *Daemon) newContainer(name string, config *containertypes.Config, imgID image.ID, managed bool) (*container.Container, error) {
@@ -175,8 +151,6 @@ func (daemon *Daemon) generateHostname(id string, config *containertypes.Config)
 }
 
 func (daemon *Daemon) setSecurityOptions(container *container.Container, hostConfig *containertypes.HostConfig) error {
-	container.Lock()
-	defer container.Unlock()
 	return parseSecurityOpt(container, hostConfig)
 }
 
@@ -186,9 +160,6 @@ func (daemon *Daemon) setHostConfig(container *container.Container, hostConfig *
 	if err := daemon.registerMountPoints(container, hostConfig); err != nil {
 		return err
 	}
-
-	container.Lock()
-	defer container.Unlock()
 
 	// Register any links from the host config before starting the container
 	if err := daemon.registerLinks(container, hostConfig); err != nil {

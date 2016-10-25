@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/docker/docker/pkg/mount"
@@ -37,6 +38,11 @@ func (daemon *Daemon) cleanupMountsFromReaderByID(reader io.Reader, id string, u
 				for _, p := range regexps {
 					if p.MatchString(mnt) {
 						if err := unmount(mnt); err != nil {
+							if err == syscall.EINVAL {
+								if mounted, err := mount.Mounted(mnt); !mounted && err == nil {
+									continue
+								}
+							}
 							logrus.Error(err)
 							errors = append(errors, err.Error())
 						}

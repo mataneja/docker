@@ -50,10 +50,8 @@ func (daemon *Daemon) update(name string, hostConfig *container.HostConfig) erro
 	backupHostConfig := *container.HostConfig
 	defer func() {
 		if restoreConfig {
-			container.Lock()
 			container.HostConfig = &backupHostConfig
 			daemon.containers.Commit(container)
-			container.Unlock()
 		}
 	}()
 

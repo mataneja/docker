@@ -22,7 +22,8 @@ func TestStoreContainer(t *testing.T) {
 		EventContainerUpdate{Container: c, Checks: []ContainerCheckFunc{MatchContainerID}},
 		EventContainerDelete{Container: c, Checks: []ContainerCheckFunc{MatchContainerID}},
 	}
-	chEvent := store.SubscribeEvents(topics...)
+	chEvent, cancel := store.SubscribeEvents(topics...)
+	defer cancel()
 
 	// test container create
 	err := store.Update(func(tx Tx) error {

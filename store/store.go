@@ -19,7 +19,7 @@ type Store interface {
 	View(func(ReadTx))
 	Update(func(Tx) error) error
 	Batch(func(*Batch) error) (int, error)
-	SubscribeEvents(...Event) <-chan interface{}
+	SubscribeEvents(buffer int, events ...Event) (ch <-chan interface{}, cancel func())
 	Close()
 }
 
@@ -88,7 +88,7 @@ func (s *MemoryStore) Update(cb func(Tx) error) error {
 }
 
 // SubscribeEvents returns the publish/subscribe queue.
-func (s *MemoryStore) SubscribeEvents(watchEvents ...Event) <-chan interface{} {
+func (s *MemoryStore) SubscribeEvents(buffer int, watchEvents ...Event) (eventCh <-chan interface{}, cancel func()) {
 	topic := func(i interface{}) bool {
 		observed, ok := i.(Event)
 		if !ok {
@@ -104,7 +104,9 @@ func (s *MemoryStore) SubscribeEvents(watchEvents ...Event) <-chan interface{} {
 		// doesn't match
 		return watchEvents == nil
 	}
-	return s.publisher.SubscribeTopic(topic)
+	ch := s.publisher.SubscribeTopicWithBuffer(buffer, topic)
+	cancelFunc := func() { s.publisher.Evict(ch) }
+	return ch, cancelFunc
 }
 
 func prefixFromArgs(args ...interface{}) ([]byte, error) {

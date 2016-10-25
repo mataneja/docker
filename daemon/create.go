@@ -99,6 +99,10 @@ func (daemon *Daemon) create(params types.ContainerCreateConfig, managed bool) (
 	if container, err = daemon.newContainer(params.Name, params.Config, imgID, managed); err != nil {
 		return nil, err
 	}
+
+	daemon.stateLock.Lock(container.ID)
+	defer daemon.stateLock.Unlock(container.ID)
+
 	defer func() {
 		if retErr != nil {
 			if err := daemon.cleanupContainer(container, true, true); err != nil {

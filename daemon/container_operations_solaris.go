@@ -16,7 +16,7 @@ func (daemon *Daemon) setupIpcDirs(container *container.Container) error {
 	return nil
 }
 
-func killProcessDirectly(container *container.Container) error {
+func (daemon *Daemon) killProcessDirectly(container *container.Container) error {
 	return nil
 }
 

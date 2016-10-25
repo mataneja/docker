@@ -86,6 +86,7 @@ func (tx *tx) update(table string, o Object) error {
 	err := tx.memDBTx.Insert(table, copy)
 	if err == nil {
 		tx.changeList = append(tx.changeList, copy.EventUpdate())
+		o.SetVersion(copy.GetVersion())
 	}
 	return err
 }

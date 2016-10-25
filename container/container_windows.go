@@ -68,8 +68,6 @@ func (container *Container) TmpfsMounts() ([]Mount, error) {
 
 // UpdateContainer updates configuration of a container
 func (container *Container) UpdateContainer(hostConfig *containertypes.HostConfig) error {
-	container.Lock()
-	defer container.Unlock()
 	resources := hostConfig.Resources
 	if resources.BlkioWeight != 0 || resources.CPUShares != 0 ||
 		resources.CPUPeriod != 0 || resources.CPUQuota != 0 ||

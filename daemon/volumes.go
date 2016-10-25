@@ -202,8 +202,6 @@ func (daemon *Daemon) registerMountPoints(container *container.Container, hostCo
 		mountPoints[mp.Destination] = mp
 	}
 
-	container.Lock()
-
 	// 4. Cleanup old volumes that are about to be reassigned.
 	for _, m := range mountPoints {
 		if m.BackwardsCompatible() {
@@ -213,8 +211,6 @@ func (daemon *Daemon) registerMountPoints(container *container.Container, hostCo
 		}
 	}
 	container.MountPoints = mountPoints
-
-	container.Unlock()
 
 	return nil
 }
@@ -273,7 +269,8 @@ func backportMountSpec(container *container.Container) error {
 			m.Spec.ReadOnly = true
 		}
 	}
-	return container.ToDiskLocking()
+	// TODO(cpuguy83): use daemon.containers.Commit?
+	return container.ToDisk()
 }
 
 func (daemon *Daemon) traverseLocalVolumes(fn func(volume.Volume) error) error {

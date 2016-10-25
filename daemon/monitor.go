@@ -38,9 +38,8 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 			}
 		}
 
-		c.Lock()
-		c.StreamConfig.Wait()
-		c.Reset(false)
+		c.Streams().Wait()
+		c.Reset()
 
 		restart, wait, err := c.RestartManager().ShouldRestart(e.ExitCode, false, time.Since(c.StartedAt))
 		if err == nil && restart {
@@ -62,9 +61,11 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 			go func() {
 				err := <-wait
 				if err == nil {
+					daemon.stateLock.Lock(c.ID)
 					if err = daemon.containerStart(c, "", "", false); err != nil {
 						logrus.Debugf("failed to restart container: %+v", err)
 					}
+					daemon.stateLock.Unlock(c.ID)
 				}
 				if err != nil {
 					c.SetStopped(platformConstructExitStatus(e))
@@ -76,10 +77,10 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 			}()
 		}
 
-		defer c.Unlock()
-		if err := c.ToDisk(); err != nil {
+		if err := daemon.containers.Commit(c); err != nil {
 			return err
 		}
+
 		return daemon.postRunProcessing(c, e)
 	case libcontainerd.StateExitProcess:
 		if execConfig := daemon.execCommands.Get(e.ProcessID); execConfig != nil {
@@ -101,7 +102,7 @@ func (daemon *Daemon) StateChanged(id string, e libcontainerd.StateInfo) error {
 		c.HasBeenManuallyStopped = false
 		c.HasBeenStartedBefore = true
 		if err := daemon.containers.Commit(c); err != nil {
-			c.Reset(false)
+			c.Reset()
 			return err
 		}
 		daemon.initHealthMonitor(c)

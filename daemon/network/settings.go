@@ -31,17 +31,3 @@ type EndpointSettings struct {
 	*networktypes.EndpointSettings
 	IPAMOperational bool
 }
-
-// Copy makes a copy of Settings
-// TODO(@cpuguy83): Handle Networks and ServiceConfig
-func (s *Settings) Copy() *Settings {
-	var copy Settings
-	copy = *s
-	return &copy
-}
-
-func (s *EndpointSettings) Copy() *EndpointSettings {
-	var copy EndpointSettings
-	copy = *s
-	return &copy
-}

@@ -26,7 +26,7 @@ func (daemon *Daemon) newStatsCollector(interval time.Duration) *statsCollector 
 	s := &statsCollector{
 		interval:   interval,
 		supervisor: daemon,
-		publishers: make(map[*container.Container]*pubsub.Publisher),
+		publishers: make(map[string]*publishersPair),
 		bufReader:  bufio.NewReaderSize(nil, 128),
 	}
 	platformNewStatsCollector(s)
@@ -34,12 +34,17 @@ func (daemon *Daemon) newStatsCollector(interval time.Duration) *statsCollector 
 	return s
 }
 
+type publishersPair struct {
+	container *container.Container
+	publisher *pubsub.Publisher
+}
+
 // statsCollector manages and provides container resource stats
 type statsCollector struct {
 	m          sync.Mutex
 	supervisor statsSupervisor
 	interval   time.Duration
-	publishers map[*container.Container]*pubsub.Publisher
+	publishers map[string]*publishersPair
 	bufReader  *bufio.Reader
 
 	// The following fields are not set on Windows currently.
@@ -53,21 +58,22 @@ type statsCollector struct {
 func (s *statsCollector) collect(c *container.Container) chan interface{} {
 	s.m.Lock()
 	defer s.m.Unlock()
-	publisher, exists := s.publishers[c]
+	pair, exists := s.publishers[c.ID]
 	if !exists {
-		publisher = pubsub.NewPublisher(100*time.Millisecond, 1024)
-		s.publishers[c] = publisher
+		publisher := pubsub.NewPublisher(100*time.Millisecond, 1024)
+		pair = &publishersPair{c, publisher}
+		s.publishers[c.ID] = pair
 	}
-	return publisher.Subscribe()
+	return pair.publisher.Subscribe()
 }
 
 // stopCollection closes the channels for all subscribers and removes
 // the container from metrics collection.
 func (s *statsCollector) stopCollection(c *container.Container) {
 	s.m.Lock()
-	if publisher, exists := s.publishers[c]; exists {
-		publisher.Close()
-		delete(s.publishers, c)
+	if pair, exists := s.publishers[c.ID]; exists {
+		pair.publisher.Close()
+		delete(s.publishers, c.ID)
 	}
 	s.m.Unlock()
 }
@@ -75,24 +81,21 @@ func (s *statsCollector) stopCollection(c *container.Container) {
 // unsubscribe removes a specific subscriber from receiving updates for a container's stats.
 func (s *statsCollector) unsubscribe(c *container.Container, ch chan interface{}) {
 	s.m.Lock()
-	publisher := s.publishers[c]
-	if publisher != nil {
-		publisher.Evict(ch)
-		if publisher.Len() == 0 {
-			delete(s.publishers, c)
+	pair := s.publishers[c.ID]
+	if pair != nil {
+		pair.publisher.Evict(ch)
+		if pair.publisher.Len() == 0 {
+			delete(s.publishers, c.ID)
 		}
 	}
 	s.m.Unlock()
 }
 
 func (s *statsCollector) run() {
-	type publishersPair struct {
-		container *container.Container
-		publisher *pubsub.Publisher
-	}
+
 	// we cannot determine the capacity here.
 	// it will grow enough in first iteration
-	var pairs []publishersPair
+	var pairs []*publishersPair
 
 	for range time.Tick(s.interval) {
 		// it does not make sense in the first iteration,
@@ -100,9 +103,9 @@ func (s *statsCollector) run() {
 		pairs = pairs[:0]
 
 		s.m.Lock()
-		for container, publisher := range s.publishers {
+		for _, pair := range s.publishers {
 			// copy pointers here to release the lock ASAP
-			pairs = append(pairs, publishersPair{container, publisher})
+			pairs = append(pairs, pair)
 		}
 		s.m.Unlock()
 		if len(pairs) == 0 {

@@ -7,12 +7,13 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
+	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	containertypes "github.com/docker/docker/api/types/container"
 	mounttypes "github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/pkg/chrootarchive"
+	"github.com/docker/docker/pkg/mount"
 	"github.com/docker/docker/pkg/stringid"
 	"github.com/docker/docker/pkg/symlink"
 	"github.com/docker/docker/pkg/system"
@@ -219,23 +220,29 @@ func (container *Container) UnmountIpcMounts(unmount func(pth string) error) {
 		return
 	}
 
-	var warnings []string
-
-	if !container.HasMountFor("/dev/shm") {
-		shmPath, err := container.ShmResourcePath()
-		if err != nil {
-			logrus.Error(err)
-			warnings = append(warnings, err.Error())
-		} else if shmPath != "" {
-			if err := unmount(shmPath); err != nil && !os.IsNotExist(err) {
-				warnings = append(warnings, fmt.Sprintf("failed to umount %s: %v", shmPath, err))
-			}
-
-		}
+	if container.HasMountFor("/dev/shm") {
+		// container has a custom shm mount, nothing we need to handle
+		return
 	}
 
-	if len(warnings) > 0 {
-		logrus.Warnf("failed to cleanup ipc mounts:\n%v", strings.Join(warnings, "\n"))
+	shmPath, err := container.ShmResourcePath()
+	if err != nil {
+		logrus.Errorf("Error getting container shm path for container %s: %v", container.ID, err)
+		return
+	}
+
+	if shmPath == "" {
+		return
+	}
+
+	if err := unmount(shmPath); err != nil && !os.IsNotExist(err) {
+		if err == syscall.EINVAL {
+			if mounted, err := mount.Mounted(shmPath); err == nil && !mounted {
+				// it's not mounted so all is ok
+				return
+			}
+		}
+		logrus.Warnf("Failed to cleanup IPC mounts for container %s: failed to unmount  %s: %v", container.ID, shmPath, err)
 	}
 }
 
@@ -283,9 +290,6 @@ func (container *Container) UnmountSecrets() error {
 
 // UpdateContainer updates configuration of a container.
 func (container *Container) UpdateContainer(hostConfig *containertypes.HostConfig) error {
-	container.Lock()
-	defer container.Unlock()
-
 	// update resources of container
 	resources := hostConfig.Resources
 	cResources := &container.HostConfig.Resources

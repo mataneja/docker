@@ -93,5 +93,6 @@ func DumpStacks(dir string) (string, error) {
 		return "", errors.Wrap(err, "failed to write goroutine stacks")
 	}
 	f.Sync()
+	os.Stderr.Write(buf)
 	return path, nil
 }

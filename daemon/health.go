@@ -108,9 +108,6 @@ func (p *cmdProbe) run(ctx context.Context, d *Daemon, container *container.Cont
 
 // Update the container's Status.Health struct based on the latest probe's result.
 func handleProbeResult(d *Daemon, c *container.Container, result *types.HealthcheckResult) {
-	c.Lock()
-	defer c.Unlock()
-
 	retries := c.Config.Healthcheck.Retries
 	if retries <= 0 {
 		retries = defaultProbeRetries
@@ -135,6 +132,10 @@ func handleProbeResult(d *Daemon, c *container.Container, result *types.Healthch
 			h.Status = types.Unhealthy
 		}
 		// Else we're starting or healthy. Stay in that state.
+	}
+
+	if err := d.containers.Commit(c); err != nil {
+		logrus.Errorf("error while commiting health state for container %s: %v", c.ID, err)
 	}
 
 	if oldStatus != h.Status {
@@ -231,13 +232,18 @@ func (d *Daemon) updateHealthMonitor(c *container.Container) {
 	}
 
 	probe := getProbe(c)
+	state := container.GetRunState(c)
+	if state == nil {
+		return
+	}
 	wantRunning := c.Running && !c.Paused && probe != nil
 	if wantRunning {
-		if stop := h.OpenMonitorChannel(); stop != nil {
+		if stop := state.OpenHealthMonitor(); stop != nil {
 			go monitor(d, c, stop, probe)
 		}
 	} else {
-		h.CloseMonitorChannel()
+		state.CloseHealthMonitor()
+		c.State.Health.Status = types.Unhealthy
 	}
 }
 
@@ -269,9 +275,9 @@ func (d *Daemon) initHealthMonitor(c *container.Container) {
 // Called when the container is being stopped (whether because the health check is
 // failing or for any other reason).
 func (d *Daemon) stopHealthchecks(c *container.Container) {
-	h := c.State.Health
-	if h != nil {
-		h.CloseMonitorChannel()
+	if c.State.Health == nil {
+		s := container.GetRunState(c)
+		s.CloseHealthMonitor()
 	}
 }
 

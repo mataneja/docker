@@ -12,7 +12,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	apierrors "github.com/docker/docker/api/errors"
-	"github.com/docker/docker/api/types"
 	containertypes "github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/container"
 	"github.com/docker/docker/runconfig"
@@ -28,6 +27,8 @@ func (daemon *Daemon) ContainerStart(name string, hostConfig *containertypes.Hos
 	if err != nil {
 		return err
 	}
+	daemon.stateLock.Lock(container.ID)
+	defer daemon.stateLock.Unlock(container.ID)
 
 	if container.IsPaused() {
 		return fmt.Errorf("Cannot start a paused container, try unpause instead.")
@@ -59,9 +60,6 @@ func (daemon *Daemon) ContainerStart(name string, hostConfig *containertypes.Hos
 				// if user has change the network mode on starting, clean up the
 				// old networks. It is a deprecated feature and has been removed in Docker 1.12
 				container.NetworkSettings.Networks = nil
-				if err := daemon.containers.Commit(container); err != nil {
-					return err
-				}
 			}
 			container.InitDNSHostConfig()
 		}
@@ -87,19 +85,12 @@ func (daemon *Daemon) ContainerStart(name string, hostConfig *containertypes.Hos
 	return daemon.containerStart(container, checkpoint, checkpointDir, true)
 }
 
-// Start starts a container
-func (daemon *Daemon) Start(container *container.Container) error {
-	return daemon.containerStart(container, "", "", true)
-}
-
 // containerStart prepares the container to run by setting up everything the
 // container needs, such as storage and networking, as well as links
 // between containers. The container is left waiting for a signal to
 // begin running.
 func (daemon *Daemon) containerStart(container *container.Container, checkpoint string, checkpointDir string, resetRestartManager bool) (err error) {
 	start := time.Now()
-	container.Lock()
-	defer container.Unlock()
 
 	if resetRestartManager && container.Running { // skip this check if already in restarting step and resetRestartManager==false
 		return nil
@@ -122,11 +113,9 @@ func (daemon *Daemon) containerStart(container *container.Container, checkpoint 
 			daemon.Cleanup(container)
 			// if containers AutoRemove flag is set, remove it after clean up
 			if container.HostConfig.AutoRemove {
-				container.Unlock()
-				if err := daemon.ContainerRm(container.ID, &types.ContainerRmConfig{ForceRemove: true, RemoveVolume: true}); err != nil {
+				if err := daemon.cleanupContainer(container, true, true); err != nil {
 					logrus.Errorf("can't remove container %s: %v", container.ID, err)
 				}
-				container.Lock()
 			}
 		}
 	}()
@@ -187,7 +176,7 @@ func (daemon *Daemon) containerStart(container *container.Container, checkpoint 
 			container.SetExitCode(127)
 		}
 
-		container.Reset(false)
+		container.Reset()
 
 		return fmt.Errorf("%s", errDesc)
 	}
@@ -225,5 +214,4 @@ func (daemon *Daemon) Cleanup(container *container.Container) {
 			logrus.Warnf("%s cleanup: Failed to umount volumes: %v", container.ID, err)
 		}
 	}
-	container.CancelAttachContext()
 }

@@ -30,10 +30,16 @@ func (daemon *Daemon) ContainerLogs(ctx context.Context, containerName string, c
 		return fmt.Errorf("You must choose at least one stream")
 	}
 
-	cLog, err := daemon.getLogger(container)
+	cLog, isNewLogger, err := daemon.getLogger(container)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if isNewLogger {
+			logrus.Debugf("closing log driver reader for %s: %v", container.ID, cLog.Close())
+		}
+	}()
+
 	logReader, ok := cLog.(logger.LogReader)
 	if !ok {
 		return logger.ErrReadLogsNotSupported
@@ -61,6 +67,7 @@ func (daemon *Daemon) ContainerLogs(ctx context.Context, containerName string, c
 		Follow: follow,
 	}
 	logs := logReader.ReadLogs(readConfig)
+	defer logs.Close()
 
 	wf := ioutils.NewWriteFlusher(config.OutStream)
 	defer wf.Close()
@@ -75,25 +82,16 @@ func (daemon *Daemon) ContainerLogs(ctx context.Context, containerName string, c
 		outStream = stdcopy.NewStdWriter(outStream, stdcopy.Stdout)
 	}
 
+	defer logrus.Debug("logs: end stream")
 	for {
 		select {
 		case err := <-logs.Err:
 			logrus.Errorf("Error streaming logs: %v", err)
 			return nil
 		case <-ctx.Done():
-			logs.Close()
 			return nil
 		case msg, ok := <-logs.Msg:
 			if !ok {
-				logrus.Debug("logs: end stream")
-				logs.Close()
-				if cLog != container.LogDriver {
-					// Since the logger isn't cached in the container, which occurs if it is running, it
-					// must get explicitly closed here to avoid leaking it and any file handles it has.
-					if err := cLog.Close(); err != nil {
-						logrus.Errorf("Error closing logger: %v", err)
-					}
-				}
 				return nil
 			}
 			logLine := msg.Line
@@ -113,11 +111,12 @@ func (daemon *Daemon) ContainerLogs(ctx context.Context, containerName string, c
 	}
 }
 
-func (daemon *Daemon) getLogger(container *container.Container) (logger.Logger, error) {
-	if container.LogDriver != nil && container.IsRunning() {
-		return container.LogDriver, nil
+func (daemon *Daemon) getLogger(container *container.Container) (logger logger.Logger, created bool, err error) {
+	if l := container.LogDriver(); l != nil && container.IsRunning() {
+		return l, false, nil
 	}
-	return container.StartLogger(container.HostConfig.LogConfig)
+	l, err := container.StartLogger(container.HostConfig.LogConfig)
+	return l, true, err
 }
 
 // mergeLogConfig merges the daemon log config to the container's log config if the container's log driver is not specified.

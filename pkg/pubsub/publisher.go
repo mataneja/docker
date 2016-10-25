@@ -46,7 +46,11 @@ func (p *Publisher) Subscribe() chan interface{} {
 
 // SubscribeTopic adds a new subscriber that filters messages sent by a topic.
 func (p *Publisher) SubscribeTopic(topic topicFunc) chan interface{} {
-	ch := make(chan interface{}, p.buffer)
+	return p.SubscribeTopicWithBuffer(p.buffer, topic)
+}
+
+func (p *Publisher) SubscribeTopicWithBuffer(buffer int, topic topicFunc) chan interface{} {
+	ch := make(chan interface{}, buffer)
 	p.m.Lock()
 	p.subscribers[ch] = topic
 	p.m.Unlock()

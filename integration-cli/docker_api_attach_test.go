@@ -82,7 +82,7 @@ func (s *DockerSuite) TestPostContainersAttachContainerNotFound(c *check.C) {
 	body, err := readBody(resp.Body)
 	c.Assert(err, checker.IsNil)
 	c.Assert(resp.StatusCode, checker.Equals, http.StatusNotFound)
-	expected := "No such container: doesnotexist\r\n"
+	expected := "no such container: doesnotexist\r\n"
 	c.Assert(string(body), checker.Equals, expected)
 }
 
@@ -90,7 +90,7 @@ func (s *DockerSuite) TestGetContainersWsAttachContainerNotFound(c *check.C) {
 	status, body, err := sockRequest("GET", "/containers/doesnotexist/attach/ws", nil)
 	c.Assert(status, checker.Equals, http.StatusNotFound)
 	c.Assert(err, checker.IsNil)
-	expected := "No such container: doesnotexist"
+	expected := "no such container: doesnotexist"
 	c.Assert(getErrorMessage(c, body), checker.Contains, expected)
 }
 
@@ -206,5 +206,5 @@ func (s *DockerSuite) TestPostContainersAttach(c *check.C) {
 	actualStdout := new(bytes.Buffer)
 	actualStderr := new(bytes.Buffer)
 	stdcopy.StdCopy(actualStdout, actualStderr, resp.Reader)
-	c.Assert(actualStdout.Bytes(), checker.DeepEquals, []byte("hello\nsuccess"), check.Commentf("Attach didn't return the expected data from stdout"))
+	c.Assert(actualStdout.String(), checker.DeepEquals, "hello\nsuccess", check.Commentf("Attach didn't return the expected data from stdout"))
 }

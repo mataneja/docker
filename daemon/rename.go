@@ -38,9 +38,6 @@ func (daemon *Daemon) ContainerRename(oldName, newName string) error {
 		return fmt.Errorf("Renaming a container with the same name as its current name")
 	}
 
-	container.Lock()
-	defer container.Unlock()
-
 	links := map[string]*dockercontainer.Container{}
 	for k, v := range daemon.linkIndex.children(container) {
 		if !strings.HasPrefix(k, oldName) {
@@ -73,17 +70,21 @@ func (daemon *Daemon) ContainerRename(oldName, newName string) error {
 				daemon.nameIndex.Release(newName + k)
 			}
 			daemon.releaseName(newName)
+			if err := daemon.containers.Commit(container); err != nil {
+				logrus.Errorf("Error while rolling back container rename ol for container '%s': %v", container.ID, err)
+			}
 		}
 	}()
+
+	if err = daemon.containers.Commit(container); err != nil {
+		return err
+	}
 
 	for k, v := range links {
 		daemon.linkIndex.unlink(oldName+k, v, container)
 		daemon.nameIndex.Release(oldName + k)
 	}
 	daemon.releaseName(oldName)
-	if err = daemon.containers.Commit(container); err != nil {
-		return err
-	}
 
 	attributes := map[string]string{
 		"oldName": oldName,

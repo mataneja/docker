@@ -36,6 +36,7 @@ import (
 	"github.com/docker/docker/pkg/tarsum"
 	"github.com/docker/docker/pkg/urlutil"
 	"github.com/docker/docker/runconfig/opts"
+	"golang.org/x/net/context"
 )
 
 func (b *Builder) commit(id string, autoCmd strslice.StrSlice, comment string) error {
@@ -520,7 +521,7 @@ var errCancelled = errors.New("build cancelled")
 func (b *Builder) run(cID string) (err error) {
 	errCh := make(chan error)
 	go func() {
-		errCh <- b.docker.ContainerAttachRaw(cID, nil, b.Stdout, b.Stderr, true)
+		errCh <- b.docker.ContainerAttachRaw(context.Background(), cID, nil, b.Stdout, b.Stderr, true)
 	}()
 
 	finished := make(chan struct{})
