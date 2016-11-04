@@ -499,7 +499,11 @@ func (d *Driver) ApplyDiff(id string, parent string, diff io.Reader) (size int64
 	// if quota is used, hardlinks between different volumes are not supported.
 	flags := copyHardlink
 	if projectQuotaSupported == true {
-		flags = 0
+		srcID, _ := quota.GetProjectID(d.dir(id))
+		dstID, _ := quota.GetProjectID(d.dir(parent))
+		if srcID != dstID {
+			flags = 0
+		}
 	}
 
 	if err = copyDir(parentRootDir, tmpRootDir, flags); err != nil {
