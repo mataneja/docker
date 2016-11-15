@@ -9,6 +9,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/versions"
 	"github.com/docker/docker/cli/command"
 	clientapi "github.com/docker/docker/client"
 )
@@ -19,11 +20,21 @@ func waitExitOrRemoved(ctx context.Context, dockerCli *command.DockerCli, contai
 		panic("Internal Error: waitExitOrRemoved needs a containerID as parameter")
 	}
 
+	var removeErr error
 	statusChan := make(chan int)
 	exitCode := 125
 
-	eventProcessor := func(e events.Message) bool {
+	// Get events via Events API
+	f := filters.NewArgs()
+	f.Add("type", "container")
+	f.Add("container", containerID)
+	options := types.EventsOptions{
+		Filters: f,
+	}
+	eventCtx, cancel := context.WithCancel(ctx)
+	eventq, errq := dockerCli.Client().Events(eventCtx, options)
 
+	eventProcessor := func(e events.Message) bool {
 		stopProcessing := false
 		switch e.Status {
 		case "die":
@@ -37,6 +48,17 @@ func waitExitOrRemoved(ctx context.Context, dockerCli *command.DockerCli, contai
 			}
 			if !waitRemove {
 				stopProcessing = true
+			}
+
+			// If we are talking to an older daemon, `AutoRemove` is not supported.
+			// We need to fall back to the old behavior, which is client-side removal
+			if waitRemove && versions.LessThan(dockerCli.Client().ClientVersion(), "1.25") {
+				go func() {
+					removeErr = dockerCli.Client().ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{RemoveVolumes: true})
+					if removeErr != nil {
+						cancel() // cancel the event Q
+					}
+				}()
 			}
 		case "detach":
 			exitCode = 0
@@ -53,27 +75,20 @@ func waitExitOrRemoved(ctx context.Context, dockerCli *command.DockerCli, contai
 		return false
 	}
 
-	// Get events via Events API
-	f := filters.NewArgs()
-	f.Add("type", "container")
-	f.Add("container", containerID)
-	options := types.EventsOptions{
-		Filters: f,
-	}
-
-	eventCtx, cancel := context.WithCancel(ctx)
-	eventq, errq := dockerCli.Client().Events(eventCtx, options)
-
 	go func() {
 		defer cancel()
 
 		for {
 			select {
+			case <-eventCtx.Done():
+				if removeErr != nil {
+					logrus.Errorf("error removing container: %v", removeErr)
+					return
+				}
 			case evt := <-eventq:
 				if eventProcessor(evt) {
 					return
 				}
-
 			case err := <-errq:
 				logrus.Errorf("error getting events from daemon: %v", err)
 				statusChan <- exitCode
