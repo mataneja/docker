@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/docker/docker/pkg/archive"
+	"github.com/docker/docker/pkg/idtools"
 )
 
 type graphDriverProxy struct {
@@ -14,9 +15,10 @@ type graphDriverProxy struct {
 }
 
 type graphDriverRequest struct {
-	ID         string `json:",omitempty"`
-	Parent     string `json:",omitempty"`
-	MountLabel string `json:",omitempty"`
+	ID         string            `json:",omitempty"`
+	Parent     string            `json:",omitempty"`
+	MountLabel string            `json:",omitempty"`
+	StorageOpt map[string]string `json:",omitempty"`
 }
 
 type graphDriverResponse struct {
@@ -30,14 +32,18 @@ type graphDriverResponse struct {
 }
 
 type graphDriverInitRequest struct {
-	Home string
-	Opts []string
+	Home    string
+	Opts    []string        `json:"Opts"`
+	UIDMaps []idtools.IDMap `json:"UIDMaps"`
+	GIDMaps []idtools.IDMap `json:"GIDMaps"`
 }
 
-func (d *graphDriverProxy) Init(home string, opts []string) error {
+func (d *graphDriverProxy) Init(home string, opts []string, uidMaps, gidMaps []idtools.IDMap) error {
 	args := &graphDriverInitRequest{
-		Home: home,
-		Opts: opts,
+		Home:    home,
+		Opts:    opts,
+		UIDMaps: uidMaps,
+		GIDMaps: gidMaps,
 	}
 	var ret graphDriverResponse
 	if err := d.client.Call("GraphDriver.Init", args, &ret); err != nil {
@@ -54,16 +60,15 @@ func (d *graphDriverProxy) String() string {
 }
 
 func (d *graphDriverProxy) CreateReadWrite(id, parent string, opts *CreateOpts) error {
-	mountLabel := ""
+	args := &graphDriverRequest{
+		ID:     id,
+		Parent: parent,
+	}
 	if opts != nil {
-		mountLabel = opts.MountLabel
+		args.MountLabel = opts.MountLabel
+		args.StorageOpt = opts.StorageOpt
 	}
 
-	args := &graphDriverRequest{
-		ID:         id,
-		Parent:     parent,
-		MountLabel: mountLabel,
-	}
 	var ret graphDriverResponse
 	if err := d.client.Call("GraphDriver.CreateReadWrite", args, &ret); err != nil {
 		return err
@@ -75,14 +80,13 @@ func (d *graphDriverProxy) CreateReadWrite(id, parent string, opts *CreateOpts) 
 }
 
 func (d *graphDriverProxy) Create(id, parent string, opts *CreateOpts) error {
-	mountLabel := ""
-	if opts != nil {
-		mountLabel = opts.MountLabel
-	}
 	args := &graphDriverRequest{
-		ID:         id,
-		Parent:     parent,
-		MountLabel: mountLabel,
+		ID:     id,
+		Parent: parent,
+	}
+	if opts != nil {
+		args.MountLabel = opts.MountLabel
+		args.StorageOpt = opts.StorageOpt
 	}
 	var ret graphDriverResponse
 	if err := d.client.Call("GraphDriver.Create", args, &ret); err != nil {

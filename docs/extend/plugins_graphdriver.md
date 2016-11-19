@@ -5,8 +5,8 @@ graph driver for use with Docker engine. This is an alternative to using the
 built-in storage drivers, such as aufs/overlay/devicemapper/btrfs.
 
 A graph driver plugin is used for image and container filesystem storage, as such
-the plugin must be started and available for connections prior to Docker Engine
-being started.
+the plugin must be enabled and available for connections prior to Docker Engine
+being started with the plugin.
 
 # Write a graph driver plugin
 
@@ -25,7 +25,9 @@ expected to provide the rootfs for containers as well as image layer storage.
 ```
 {
   "Home": "/graph/home/path",
-  "Opts": []
+  "Opts": [],
+	"UIDMaps": [],
+	"GIDMaps": [],
 }
 ```
 
@@ -33,6 +35,16 @@ Initialize the graph driver plugin with a home directory and array of options.
 Plugins are not required to accept these options as the Docker Engine does not
 require that the plugin use this path or options, they are only being passed
 through from the user.
+
+A list of UID and GID mappings used for user namespaces is also provided. These
+are an array of mappings which are structured like so:
+```
+{
+	"ContainerID": 0,
+	"HostID": 0,
+	"Size": 0
+}
+```
 
 **Response**:
 ```
@@ -51,13 +63,15 @@ Respond with a non-empty string error if an error occurred.
 {
   "ID": "46fe8644f2572fd1e505364f7581e0c9dbc7f14640bd1fb6ce97714fb6fc5187",
   "Parent": "2cd9c322cb78a55e8212aa3ea8425a4180236d7106938ec921d0935a4b8ca142"
-  "MountLabel": ""
+  "MountLabel": "",
+	"StorageOpt": {}
 }
 ```
 
 Create a new, empty, read-only filesystem layer with the specified
 `ID`, `Parent` and `MountLabel`. `Parent` may be an empty string,
-which would indicate that there is no parent layer.
+which would indicate that there is no parent layer. `StorageOpt` is map of
+strings.
 
 **Response**:
 ```
@@ -75,7 +89,8 @@ Respond with a non-empty string error if an error occurred.
 {
   "ID": "46fe8644f2572fd1e505364f7581e0c9dbc7f14640bd1fb6ce97714fb6fc5187",
   "Parent": "2cd9c322cb78a55e8212aa3ea8425a4180236d7106938ec921d0935a4b8ca142"
-  "MountLabel": ""
+  "MountLabel": "",
+	"StorageOpt": {}
 }
 ```
 
