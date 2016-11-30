@@ -304,8 +304,10 @@ func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr
 	}()
 
 	driver := &Driver{}
-	if err := d.parseStorageOpt(opts.StorageOpt, driver); err != nil {
-		return err
+	if opts != nil {
+		if err := d.parseStorageOpt(opts.StorageOpt, driver); err != nil {
+			return err
+		}
 	}
 
 	if driver.options.quota.Size > 0 && !strings.HasSuffix(dir, "-init") {
