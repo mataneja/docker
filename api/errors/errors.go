@@ -9,6 +9,10 @@ type apiError struct {
 	statusCode int
 }
 
+func (e apiError) Cause() error {
+	return e.error
+}
+
 // HTTPErrorStatusCode returns a status code.
 func (e apiError) HTTPErrorStatusCode() int {
 	return e.statusCode

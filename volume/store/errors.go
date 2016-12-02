@@ -30,6 +30,12 @@ type OpErr struct {
 	Refs []string
 }
 
+// Cause returns the error that caused this error.
+// This implements the `Causer` interface from github.com/pkg/errors.
+func (e *OpErr) Cause() error {
+	return e.Err
+}
+
 // Error satisfies the built-in error interface type.
 func (e *OpErr) Error() string {
 	if e == nil {
@@ -66,11 +72,5 @@ func IsNameConflict(err error) bool {
 
 func isErr(err error, expected error) bool {
 	err = errors.Cause(err)
-	switch pe := err.(type) {
-	case nil:
-		return false
-	case *OpErr:
-		err = errors.Cause(pe.Err)
-	}
 	return err == expected
 }
