@@ -424,12 +424,11 @@ func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverRetryNotImmediatelyE
 		}
 		close(errchan)
 	}()
-	go func() {
-		// wait for a retry to occur, then create spec to allow plugin to register
-		time.Sleep(2000 * time.Millisecond)
-		// no need to check for an error here since it will get picked up by the timeout later
-		ioutil.WriteFile(specPath, []byte(s.Server.URL), 0644)
-	}()
+
+	// wait for a retry to occur, then create spec to allow plugin to register
+	time.Sleep(2000 * time.Millisecond)
+	p := newVolumePlugin(c, "test-external-volume-driver-retry")
+	defer p.Close()
 
 	select {
 	case err := <-errchan:
@@ -441,11 +440,11 @@ func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverRetryNotImmediatelyE
 	_, err := s.d.Cmd("volume", "rm", "external-volume-test")
 	c.Assert(err, checker.IsNil)
 
-	c.Assert(s.ec.activations, checker.Equals, 1)
-	c.Assert(s.ec.creations, checker.Equals, 1)
-	c.Assert(s.ec.removals, checker.Equals, 1)
-	c.Assert(s.ec.mounts, checker.Equals, 1)
-	c.Assert(s.ec.unmounts, checker.Equals, 1)
+	c.Assert(p.ec.activations, checker.Equals, 1)
+	c.Assert(p.ec.creations, checker.Equals, 1)
+	c.Assert(p.ec.removals, checker.Equals, 1)
+	c.Assert(p.ec.mounts, checker.Equals, 1)
+	c.Assert(p.ec.unmounts, checker.Equals, 1)
 }
 
 func (s *DockerExternalVolumeSuite) TestExternalVolumeDriverBindExternalVolume(c *check.C) {
