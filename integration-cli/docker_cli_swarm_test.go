@@ -680,7 +680,11 @@ func (s *DockerSwarmSuite) TestSwarmNetworkPlugin(c *check.C) {
 
 	d := s.AddDaemon(c, true, true)
 
-	out, err := d.Cmd("network", "create", "-d", globalNetworkPlugin, "foo")
+	out, err := d.Cmd("info")
+	c.Assert(err, checker.IsNil)
+	c.Assert(out, checker.Contains, globalNetworkPlugin)
+
+	out, err = d.Cmd("network", "create", "-d", globalNetworkPlugin, "foo")
 	c.Assert(err, checker.IsNil)
 	c.Assert(strings.TrimSpace(out), checker.Not(checker.Equals), "")
 
