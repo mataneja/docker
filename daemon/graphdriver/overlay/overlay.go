@@ -249,14 +249,8 @@ func (d *Driver) Cleanup() error {
 	return mount.Unmount(d.home)
 }
 
-// CreateReadWrite creates a layer that is writable for use as a container
-// file system.
-func (d *Driver) CreateReadWrite(id, parent string, opts *graphdriver.CreateOpts) error {
-	return d.Create(id, parent, opts)
-}
-
 // Parse overlay storage options
-func (d *Driver) parseStorageOpt(storageOpt map[string]string, driver *Driver) error {
+func parseStorageOpt(storageOpt map[string]string, ovOpts *overlayOptions) error {
 	// Read size to set the disk project quota per container
 	for key, val := range storageOpt {
 		key := strings.ToLower(key)
@@ -266,7 +260,10 @@ func (d *Driver) parseStorageOpt(storageOpt map[string]string, driver *Driver) e
 			if err != nil {
 				return err
 			}
-			driver.options.quota.Size = uint64(size)
+			if size < 0 {
+				return errors.New("size must not be less than 0")
+			}
+			ovOpts.quota.Size = uint64(size)
 		default:
 			return fmt.Errorf("Unknown option %s", key)
 		}
@@ -275,14 +272,27 @@ func (d *Driver) parseStorageOpt(storageOpt map[string]string, driver *Driver) e
 	return nil
 }
 
-// Create is used to create the upper, lower, and merge directories required for overlay fs for a given id.
-// The parent filesystem is used to configure these directories for the overlay.
-func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr error) {
-
-	if opts != nil && len(opts.StorageOpt) != 0 && !projectQuotaSupported {
+// CreateReadWrite creates a layer that is writable for use as a container
+// file system.
+func (d *Driver) CreateReadWrite(id, parent string, opts *graphdriver.CreateOpts) error {
+	var o overlayOptions
+	if err := parseStorageOpt(opts.StorageOpt, &o); err != nil {
+		return err
+	}
+	if o.quota.Size > 0 && !projectQuotaSupported {
 		return errors.New("--storage-opt is supported only for overlay over xfs with 'pquota' mount option")
 	}
 
+	return d.create(id, parent, o)
+}
+
+// Create is used to create the upper, lower, and merge directories required for overlay fs for a given id.
+// The parent filesystem is used to configure these directories for the overlay.
+func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr error) {
+	return d.create(id, parent, overlayOptions{})
+}
+
+func (d *Driver) create(id, parent string, opts overlayOptions) (retErr error) {
 	dir := d.dir(id)
 
 	rootUID, rootGID, err := idtools.GetRootUIDGID(d.uidMaps, d.gidMaps)
@@ -303,20 +313,6 @@ func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr
 		}
 	}()
 
-	driver := &Driver{}
-	if opts != nil {
-		if err := d.parseStorageOpt(opts.StorageOpt, driver); err != nil {
-			return err
-		}
-	}
-
-	if driver.options.quota.Size > 0 && !strings.HasSuffix(dir, "-init") {
-		// enforce container disk project quota
-		if err := d.quotaCtl.SetQuota(dir, driver.options.quota); err != nil {
-			return err
-		}
-	}
-
 	// Toplevel images are just a "root" dir
 	if parent == "" {
 		if err := idtools.MkdirAs(path.Join(dir, "root"), 0755, rootUID, rootGID); err != nil {
@@ -336,9 +332,17 @@ func (d *Driver) Create(id, parent string, opts *graphdriver.CreateOpts) (retErr
 	parentRoot := path.Join(parentDir, "root")
 
 	if s, err := os.Lstat(parentRoot); err == nil {
-		if err := idtools.MkdirAs(path.Join(dir, "upper"), s.Mode(), rootUID, rootGID); err != nil {
+		upperDir := path.Join(dir, "upper")
+		if err := idtools.MkdirAs(upperDir, s.Mode(), rootUID, rootGID); err != nil {
 			return err
 		}
+		if opts.quota.Size > 0 {
+			// enforce container disk project quota
+			if err := d.quotaCtl.SetQuota(upperDir, opts.quota); err != nil {
+				return err
+			}
+		}
+
 		if err := idtools.MkdirAs(path.Join(dir, "work"), 0700, rootUID, rootGID); err != nil {
 			return err
 		}
