@@ -455,3 +455,27 @@ func (s *DockerSuite) TestPluginUpgrade(c *check.C) {
 	dockerCmd(c, "volume", "inspect", "bananas")
 	dockerCmd(c, "run", "--rm", "-v", "bananas:/apple", "busybox", "sh", "-c", "ls -lh /apple/core")
 }
+
+func (s *DockerSuite) TestPluginLoadSave(c *check.C) {
+	testRequires(c, DaemonIsLinux, IsAmd64, Network)
+	_, _, err := dockerCmdWithError("plugin", "install", "--grant-all-permissions", pName)
+	c.Assert(err, checker.IsNil)
+
+	_, _, err = dockerCmdWithError("plugin", "save", pName, "-o", "/tmp/volplugin.tar")
+	c.Assert(err, checker.IsNil)
+	defer os.RemoveAll("/tmp/volplugin.tar")
+
+	out, _, err := dockerCmdWithError("plugin", "load", "-i", "/tmp/volplugin.tar")
+	c.Assert(err, checker.NotNil)
+	c.Assert(strings.TrimSpace(out), checker.Contains, "already exists")
+
+	_, _, err = dockerCmdWithError("plugin", "rm", "-f", pName)
+	c.Assert(err, checker.IsNil)
+
+	out, _, err = dockerCmdWithError("plugin", "load", "-i", "/tmp/volplugin.tar")
+	c.Assert(err, checker.IsNil)
+	c.Assert(strings.TrimSpace(out), checker.Contains, "Loaded plugin ID")
+
+	_, _, err = dockerCmdWithError("plugin", "rm", pName)
+	c.Assert(err, checker.IsNil)
+}
