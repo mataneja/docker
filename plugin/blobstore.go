@@ -20,6 +20,10 @@ import (
 
 type blobstore interface {
 	New() (WriteCommitCloser, error)
+	readOnlyBlobstore
+}
+
+type readOnlyBlobstore interface {
 	Get(dgst digest.Digest) (io.ReadCloser, error)
 	Size(dgst digest.Digest) (int64, error)
 }
@@ -76,11 +80,11 @@ func (b *basicBlobStore) gc(whitelist map[digest.Digest]struct{}) {
 // WriteCommitCloser defines object that can be committed to blobstore.
 type WriteCommitCloser interface {
 	io.WriteCloser
-	Commiter
+	Committer
 }
 
 // Commiter is an object that can commit a blob and return it's digest
-type Commiter interface {
+type Committer interface {
 	Commit() (digest.Digest, error)
 }
 

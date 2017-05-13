@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/docker/distribution/manifest/schema2"
+	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/system"
 	digest "github.com/opencontainers/go-digest"
 	specs "github.com/opencontainers/image-spec/specs-go"
@@ -116,7 +117,7 @@ func (b *ociImageBundleV1) GetIndex() (ocispecv1.Index, error) {
 func (b *ociImageBundleV1) ReadManifest(d ocispecv1.Descriptor) (ocispecv1.Manifest, error) {
 	var m ocispecv1.Manifest
 
-	f, err := b.openBlob(d.Digest)
+	f, err := b.Store().Get(d.Digest)
 	if err != nil {
 		return m, errors.Wrap(err, "error reading manifest")
 	}
@@ -135,10 +136,42 @@ func (b *ociImageBundleV1) ReadManifest(d ocispecv1.Descriptor) (ocispecv1.Manif
 	return m, nil
 }
 
-func (b *ociImageBundleV1) openBlob(d digest.Digest) (io.ReadCloser, error) {
-	f, err := os.Open(filepath.Join(b.root, "blobs", d.Algorithm().String(), d.Hex()))
-	if err != nil {
-		return nil, errors.Wrap(err, "error opening blob")
+func (b *ociImageBundleV1) Store() readOnlyBlobstore {
+	return &basicBlobStore{filepath.Join(b.root, "blobs")}
+}
+
+// getBlob looks for a blob in the passed in local blob store, then the remote store
+// If the blob is in the remote store it sets up the blob to be imported into the
+// local store once read, and returns a function to verifiy the imported digest
+// against the passed in digest.
+func getBlob(local blobstore, remote readOnlyBlobstore, dgst digest.Digest) (io.ReadCloser, func() error, error) {
+	if f, err := local.Get(dgst); err == nil {
+		return f, func() error { return nil }, nil
 	}
-	return f, nil
+
+	f, err := remote.Get(dgst)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	committer, err := local.New()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	verifier := func() error {
+		d, err := committer.Commit()
+		if err != nil {
+			return err
+		}
+		if d != dgst {
+			return errDigestMismatch
+		}
+		return nil
+	}
+
+	return ioutils.NewReadCloserWrapper(io.TeeReader(f, committer), func() error {
+		committer.Close()
+		return f.Close()
+	}), verifier, nil
 }
