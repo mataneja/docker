@@ -29,6 +29,7 @@ keywords: "API, Docker, rcli, REST, documentation"
 * `POST /swarm/init` now accepts a `DataPathAddr` property to set the IP-address or network interface to use for data traffic
 * `POST /swarm/join` now accepts a `DataPathAddr` property to set the IP-address or network interface to use for data traffic
 * `POST /services/create` now accepts a `PluginSpec` when `TaskTemplate.Runtime` is set to `plugin`
+* `/containers/attach` websocket endpoint now properly multiplexes streams on non-TTY outputs so clients can differentiate stdout and stderr. This uses the same stream format as the normal HTTP endpoint.
 
 ## v1.30 API changes
 
