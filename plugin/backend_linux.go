@@ -639,13 +639,9 @@ func (pm *Manager) Remove(name string, config *types.PluginRmConfig) error {
 		return errors.Wrap(err, "error unmounting plugin data")
 	}
 
-	removeDir := pluginDir + "-removing"
-	if err := os.Rename(pluginDir, removeDir); err != nil {
-		return errors.Wrap(err, "error performing atomic remove of plugin dir")
-	}
-
-	if err := system.EnsureRemoveAll(removeDir); err != nil {
-		return errors.Wrap(err, "error removing plugin dir")
+	if err := system.AtomicRemoveAll(pluginDir); err != nil {
+		os.Rename(pluginDir, pluginDir+"-removing")
+		return errors.Wrap(err, "error while removing plugin data")
 	}
 	pm.config.Store.Remove(p)
 	pm.config.LogPluginEvent(id, name, "remove")

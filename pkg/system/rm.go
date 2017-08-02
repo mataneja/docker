@@ -78,3 +78,31 @@ func EnsureRemoveAll(dir string) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+// AtomicRemoveAll performs an atomic remove using `EnsureRemoveAll`
+// During removal the passed in dir will not be accessible.
+func AtomicRemoveAll(dir string) error {
+	// best effort to unmount, if this fails (on a mounted fs), the rename/rm will fail below accordingly
+	mount.Unmount(dir)
+
+	renamed := dir + "-removing"
+	err := os.Rename(dir, renamed)
+	switch {
+	case os.IsNotExist(err):
+		// origin dir does not exist, nothing to do
+		return nil
+	case os.IsExist(err):
+		// Some previous remove failed, check if the origin dir exists -- it should not.
+		if _, e := os.Stat(dir); !os.IsNotExist(e) {
+			return errors.Wrap(err, "both rename target and origin dir exist")
+		}
+	default:
+		return errors.Wrap(err, "error attempting to rename dir for atomic removal")
+	}
+
+	if err := EnsureRemoveAll(renamed); err != nil {
+		os.Rename(renamed, dir)
+		return err
+	}
+	return nil
+}
