@@ -27,7 +27,6 @@ import (
 	"github.com/docker/docker/layer"
 	"github.com/docker/docker/pkg/authorization"
 	"github.com/docker/docker/pkg/chrootarchive"
-	"github.com/docker/docker/pkg/mount"
 	"github.com/docker/docker/pkg/pools"
 	"github.com/docker/docker/pkg/progress"
 	"github.com/docker/docker/pkg/system"
@@ -634,11 +633,6 @@ func (pm *Manager) Remove(name string, config *types.PluginRmConfig) error {
 
 	id := p.GetID()
 	pluginDir := filepath.Join(pm.config.Root, id)
-
-	if err := mount.RecursiveUnmount(pluginDir); err != nil {
-		return errors.Wrap(err, "error unmounting plugin data")
-	}
-
 	removeDir := pluginDir + "-removing"
 	if err := os.Rename(pluginDir, removeDir); err != nil {
 		return errors.Wrap(err, "error performing atomic remove of plugin dir")
@@ -651,22 +645,6 @@ func (pm *Manager) Remove(name string, config *types.PluginRmConfig) error {
 	pm.config.LogPluginEvent(id, name, "remove")
 	pm.publisher.Publish(EventRemove{Plugin: p.PluginObj})
 	return nil
-}
-
-func getMounts(root string) ([]string, error) {
-	infos, err := mount.GetMounts()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read mount table")
-	}
-
-	var mounts []string
-	for _, m := range infos {
-		if strings.HasPrefix(m.Mountpoint, root) {
-			mounts = append(mounts, m.Mountpoint)
-		}
-	}
-
-	return mounts, nil
 }
 
 // Set sets plugin args

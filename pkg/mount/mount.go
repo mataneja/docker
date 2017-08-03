@@ -3,6 +3,8 @@ package mount
 import (
 	"sort"
 	"strings"
+
+	"syscall"
 )
 
 // GetMounts retrieves a list of mounts for the current running process.
@@ -74,7 +76,10 @@ func RecursiveUnmount(target string) error {
 		if !strings.HasPrefix(m.Mountpoint, target) {
 			continue
 		}
-		if err := Unmount(m.Mountpoint); err != nil && i == len(mounts)-1 {
+		// If the error is EINVAL either this whole package is wrong (invalid flags passed to unmount(2)) or this is
+		// not a mountpoint (which is ok in this case).
+		// Meanwhile calling `Mounted()` is very expensive.
+		if err := Unmount(m.Mountpoint); err != nil && err != syscall.EINVAL && i == len(mounts)-1 {
 			if mounted, err := Mounted(m.Mountpoint); err != nil || mounted {
 				return err
 			}
